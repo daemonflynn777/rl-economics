@@ -1,0 +1,1 @@
+python3 rl_economics/pipeline.py --config_file_path="rl_economics/configs/simulation_config.yml" run
