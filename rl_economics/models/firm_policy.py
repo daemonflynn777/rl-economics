@@ -5,9 +5,9 @@ from typing import Tuple, List
 from rl_economics.models.base_policy import BasePolicy
 
 
-class ConsumerPolicy(BasePolicy):
+class FirmPolicy(BasePolicy):
     def __init__(self, num_input_features: int,
-                 num_items: int, num_salaries: int,
+                 num_prices: int, num_wages: int,
                  mlp_layer_width: int = 128):
         super().__init__()
 
@@ -19,9 +19,9 @@ class ConsumerPolicy(BasePolicy):
             nn.Linear(mlp_layer_width, mlp_layer_width),
         )
 
-        self.item_head = nn.Linear(mlp_layer_width, num_items)
+        self.price_head = nn.Linear(mlp_layer_width, num_prices)
 
-        self.working_hours_head = nn.Linear(mlp_layer_width, num_salaries)
+        self.wage_head = nn.Linear(mlp_layer_width, num_wages)
     
     def forward(self, x: torch.Tensor) -> Tuple[List[float]]:
         x = nn.ReLU(self.mlp(x))

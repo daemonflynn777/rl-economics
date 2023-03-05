@@ -5,7 +5,7 @@ from typing import Tuple, List
 from rl_economics.models.base_policy import BasePolicy
 
 
-class ConsumerPolicy(BasePolicy):
+class GovernmentPolicy(BasePolicy):
     def __init__(self, num_input_features: int, num_taxes: int,
                  mlp_layer_width: int = 128):
         super().__init__()

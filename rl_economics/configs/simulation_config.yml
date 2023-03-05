@@ -1,3 +1,34 @@
+tech:
+  device: "cuda"
 consumer:
   model:
     mlp_layer_width: 128
+    num_items: 10
+    working_hours:
+      min: 0
+      max: 1040
+      step: 260
+  optimizer:
+    lr: 0.01
+firm:
+  model:
+    mlp_layer_width: 128
+    prices:
+      min: 0
+      max: 2500
+      step: 500
+    wages:
+      min: 0
+      max: 44
+      step: 11
+  optimizer:
+    lr: 0.01
+government:
+  model:
+    mlp_layer_width: 128
+    taxes:
+      min: 0.0
+      max: 1.0
+      step: 0.2
+  optimizer:
+    lr: 0.01
