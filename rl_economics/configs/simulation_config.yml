@@ -1,5 +1,10 @@
 tech:
   device: "cuda"
+environment:
+  num_consumers: 100
+  num_firms: 8
+  labour_disutility: 0.01
+  crra_uf_param: 0.1
 consumer:
   model:
     mlp_layer_width: 128
@@ -9,7 +14,8 @@ consumer:
       max: 1040
       step: 260
   optimizer:
-    lr: 0.01
+    lr: 0.001
+  reward_scaling_factor: 5
 firm:
   model:
     mlp_layer_width: 128
@@ -22,7 +28,8 @@ firm:
       max: 44
       step: 11
   optimizer:
-    lr: 0.01
+    lr: 0.001
+  reward_scaling_factor: 30000
 government:
   model:
     mlp_layer_width: 128
@@ -31,4 +38,5 @@ government:
       max: 1.0
       step: 0.2
   optimizer:
-    lr: 0.01
+    lr: 0.0005
+  reward_scaling_factor: 1000
