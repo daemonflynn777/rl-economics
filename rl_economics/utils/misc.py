@@ -1,5 +1,8 @@
 import yaml
 from importlib_resources import files, as_file
+import random
+import numpy as np
+import torch
 
 import rl_economics.configs
 
@@ -30,3 +33,12 @@ def loadYamlConfig(yaml_file_name: str) -> dict:
 
 # c = loadYamlConfig("/home/nick/Documents/Repos/rl-economics/rl_economics/configs/simulation_config.yml")
 # print(c)
+
+
+def initSeeds(seed: int = 666) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    
+    return None

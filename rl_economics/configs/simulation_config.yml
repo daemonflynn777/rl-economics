@@ -1,10 +1,13 @@
 tech:
   device: "cuda"
+  seed: 666
 environment:
   num_consumers: 100
   num_firms: 8
   labour_disutility: 0.01
   crra_uf_param: 0.1
+  timesteps: 10
+  epochs: 100
 consumer:
   model:
     mlp_layer_width: 128

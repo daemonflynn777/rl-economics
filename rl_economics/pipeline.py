@@ -2,7 +2,8 @@ import os
 import fire
 from torch.optim import Adagrad
 
-from rl_economics.utils.misc import loadYamlConfig
+from rl_economics.utils.misc import loadYamlConfig, initSeeds
+from rl_economics.functions.general import consumersToFirmsDistribution
 from rl_economics.models import (
     ConsumerPolicy,
     FirmPolicy,
@@ -17,6 +18,7 @@ class Pipeline:
         self.simulation_config: dict = loadYamlConfig(full_config_file_path)
 
         self.tech_params = self.simulation_config["tech"]
+        self.environment_params = self.simulation_config["environment"]
         self.consumer_params = self.simulation_config["consumer"]
         self.firm_params = self.simulation_config["firm"]
         self.government_params = self.simulation_config["government"]
@@ -72,9 +74,31 @@ class Pipeline:
     def initLosses(self) -> None:
         pass
 
+    def reinforce(self) -> None:
+        pass
+
     def run(self) -> None:
+        print("Init seeds for all random things")
+        initSeeds(self.tech_params.get("seed", 666))
+
         print("Start initializing policies")
         self.initPolicies()
+
+        print("Create inital states")
+
+        print("Distribute consumers among firms")
+        consumersToFirmsDistribution(
+            num_consumers=self.environment_params["num_consumers"],
+            num_firms=self.environment_params["num_firms"]
+        )
+
+        print("Set initial states for consumers, firms and government")
+        # code goes here
+
+        print(f"Start training neural networks, number of epochs: {self.environment_params['epochs']}")
+        for i in range(self.environment_params["epochs"]):
+            # code goes here
+            pass
 
 
 if __name__ == "__main__":
