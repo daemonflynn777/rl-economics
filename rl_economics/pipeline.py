@@ -1,6 +1,7 @@
 import os
 import fire
 from torch.optim import Adagrad
+from typing import List
 
 from rl_economics.utils.misc import loadYamlConfig, initSeeds
 from rl_economics.functions.general import consumersToFirmsDistribution
@@ -8,6 +9,11 @@ from rl_economics.models import (
     ConsumerPolicy,
     FirmPolicy,
     GovernmentPolicy
+)
+from rl_economics.data.agent_state import (
+    ConsumerState,
+    FirmState,
+    GovernmentState
 )
 
 
@@ -30,12 +36,18 @@ class Pipeline:
         num_working_hours = ((self.consumer_params["model"]["working_hours"]["max"] -
                               self.consumer_params["model"]["working_hours"]["min"]) //
                              self.consumer_params["model"]["working_hours"]["step"])
+        consumer_num_unput_features = (len(ConsumerState.__dict__["__match_args__"]) - 2 +
+                                       2*self.environment_params["num_firms"] +
+                                       self.environment_params["num_consumers"])
+        print(consumer_num_unput_features)
         self.consumer_policy = ConsumerPolicy(
-            num_input_features=1,
+            num_input_features=consumer_num_unput_features,
             num_items=self.consumer_params["model"].get("num_items", 10),
             num_working_hours=num_working_hours,
-            mlp_layer_width=self.consumer_params["model"].get("mlp_layer_width", 128)
+            mlp_layer_width=self.consumer_params["model"].get("mlp_layer_width", 128),
+            device=self.tech_params["device"]
         )
+        self.consumer_policy.to(self.tech_params["device"])
         
         print("Init firm policy")
         num_prices = ((self.firm_params["model"]["prices"]["max"] -
@@ -98,7 +110,26 @@ class Pipeline:
         print(f"Start training neural networks, number of epochs: {self.environment_params['epochs']}")
         for i in range(self.environment_params["epochs"]):
             # code goes here
-            pass
+            consumer_states: List[ConsumerState] = []
+
+            c_state = ConsumerState(
+                curr_tax=[0.0]*self.environment_params["num_consumers"],
+                item_prices=[[1000]*self.environment_params["num_firms"]]*self.environment_params["num_consumers"],
+                item_quantities=[[0]*self.environment_params["num_firms"]]*self.environment_params["num_consumers"],
+                wage=[0]*self.environment_params["num_consumers"],
+                working_hours=[0]*self.environment_params["num_consumers"],
+                labour_disutility=[self.environment_params["labour_disutility"]]*self.environment_params["num_consumers"],
+                crra_uf_param=[self.environment_params["crra_uf_param"]]*self.environment_params["num_consumers"],
+                budget=[0.0]*self.environment_params["num_consumers"]
+            )
+            # print(c_state.getConsumerState(j).shape)
+            for j in range(self.environment_params["num_consumers"]):
+                action = self.consumer_policy.act(c_state.getConsumerState(j))
+                action_items = action[::2]
+                action_probs = action[1::2]
+                print(action_items)
+                print(action_probs)
+                break
 
 
 if __name__ == "__main__":

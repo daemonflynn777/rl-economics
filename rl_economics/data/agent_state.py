@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List
+import numpy as np
 
 # (n.__dict__) to get all class attributes (to calc number of input feaures for NN)
 # print(ConsumerState.__dict__["__match_args__"])
@@ -9,9 +10,8 @@ class ConsumerState:
     curr_tax: List[float]
     item_prices: List[List[int]]
     item_quantities: List[List[int]]
-    consumer_number: List[List[int]]
-    prev_wage: List[int]
-    prev_working_hours: List[int]
+    wage: List[int]
+    working_hours: List[int]
     labour_disutility: List[float]
     crra_uf_param: List[float]
     budget: List[float]
@@ -20,23 +20,39 @@ class ConsumerState:
                     curr_tax: List[float],
                     item_prices: List[List[int]],
                     item_quantities: List[List[int]],
-                    consumer_number: List[List[int]],
-                    prev_wage: List[int],
-                    prev_working_hours: List[int],
+                    wage: List[int],
+                    working_hours: List[int],
                     labour_disutility: List[float],
                     crra_uf_param: List[float],
                     budget: List[float]) -> None:
         self.curr_tax = curr_tax
         self.item_prices = item_prices
         self.item_quantities = item_quantities
-        self.consumer_number = consumer_number
-        self.prev_wage = prev_wage
-        self.prev_working_hours = prev_working_hours
+        self.wage = wage
+        self.working_hours = working_hours
         self.curr_tax = labour_disutility
         self.curr_tax = crra_uf_param
         self.curr_tax = budget
 
         return None
+    
+    def getConsumerState(self, consumer_id: int) -> np.ndarray:
+        state = []
+        consumer_number = [0]*len(self.curr_tax)
+        consumer_number[consumer_id] = 1
+
+        state.append(self.curr_tax[consumer_id])
+        state.append(self.wage[consumer_id])
+        state.append(self.working_hours[consumer_id])
+        state.append(self.labour_disutility[consumer_id])
+        state.append(self.crra_uf_param[consumer_id])
+        state.append(self.budget[consumer_id])
+        state.extend(self.item_prices[consumer_id])
+        state.extend(self.item_quantities[consumer_id])
+        state.extend(consumer_number)
+
+        return np.array(state)
+        
 
 
 @dataclass

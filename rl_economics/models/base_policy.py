@@ -9,3 +9,7 @@ class BasePolicy(ABC, nn.Module):
     @abstractmethod
     def forward(self, *args, **kwargs):
         raise NotImplementedError
+    
+    @abstractmethod
+    def act(self, *args, **kwargs):
+        raise NotImplementedError

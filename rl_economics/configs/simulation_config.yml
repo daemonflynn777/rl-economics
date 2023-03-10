@@ -1,17 +1,17 @@
 tech:
-  device: "cuda"
+  device: "cpu"
   seed: 666
 environment:
-  num_consumers: 100
+  num_consumers: 10
   num_firms: 8
   labour_disutility: 0.01
   crra_uf_param: 0.1
   timesteps: 10
-  epochs: 100
+  epochs: 1
 consumer:
   model:
     mlp_layer_width: 128
-    num_items: 10
+    num_items: 11
     working_hours:
       min: 0
       max: 1040

@@ -26,3 +26,6 @@ class FirmPolicy(BasePolicy):
     def forward(self, x: torch.Tensor) -> Tuple[List[float]]:
         x = nn.ReLU(self.mlp(x))
         return -1
+    
+    def act(self):
+        pass
