@@ -16,6 +16,29 @@ class ConsumerState:
     crra_uf_param: List[float]
     budget: List[float]
 
+    @classmethod
+    def initialState(cls,
+                     num_firms: int,
+                     num_consumers: int,
+                     curr_tax: float = 0.0,
+                     item_prices: int = 0,
+                     item_quantities: int = 0,
+                     wage: int = 0,
+                     working_hours: int = 0,
+                     labour_disutility: float = 0.01,
+                     crra_uf_param: float = 0.1,
+                     budget: float = 0.0):
+        return cls(
+            [curr_tax]*num_consumers,
+            [[item_prices]*num_firms]*num_consumers,
+            [[item_quantities]*num_firms]*num_consumers,
+            [wage]*num_consumers,
+            [working_hours]*num_consumers,
+            [labour_disutility]*num_consumers,
+            [crra_uf_param]*num_consumers,
+            [budget]*num_consumers
+        )
+
     def updateState(self,
                     curr_tax: List[float],
                     item_prices: List[List[int]],

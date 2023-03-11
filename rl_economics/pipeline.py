@@ -2,9 +2,16 @@ import os
 import fire
 from torch.optim import Adagrad
 from typing import List
+import numpy as np
 
 from rl_economics.utils.misc import loadYamlConfig, initSeeds
-from rl_economics.functions.general import consumersToFirmsDistribution
+from rl_economics.functions.general import (
+    consumersToFirmsDistribution,
+    availableGoods
+)
+from rl_economics.functions.utility import (
+    consumerUtility
+)
 from rl_economics.models import (
     ConsumerPolicy,
     FirmPolicy,
@@ -89,6 +96,42 @@ class Pipeline:
     def reinforce(self) -> None:
         pass
 
+    def simulateConsumer(self, state: ConsumerState, item_prices: List[int],
+                         item_quantities: List[int], consumer_to_firm: dict):
+        choices = []
+        losses = []
+        rewards = []
+        item_scaled_consumption = []
+
+        # get actions for each consumer
+        for i in range(self.environment_params["num_consumers"]):
+            policy_input = state.getConsumerState(i)
+            policy_output = self.consumer_policy.act(policy_input)
+            choices.append(policy_output[::2])
+            losses.append(policy_output[1::2])
+        
+        choices = np.array(choices)
+        # get item consumption for each consumer
+        for i in range(self.environment_params["num_firms"]):
+            item_demand = choices[:, i].reshape(-1)
+            item_available = item_quantities[i]
+            item_scaled_consumption.append(availableGoods(item_available, item_demand))
+        item_scaled_consumption = np.array(item_scaled_consumption).T
+
+        # calculate rewards
+        for i in range(self.environment_params["num_consumers"]):
+            consumer_items_consumption = item_scaled_consumption[i, :].reshape(-1).tolist()
+            working_hours = [0]*self.environment_params["num_firms"]
+            working_hours[consumer_to_firm[i]] = state.working_hours[i]
+            rewards.append(
+                consumerUtility(consumer_items_consumption, item_prices, working_hours,
+                                self.environment_params["labour_disutility"],
+                                self.environment_params["crra_uf_param"],
+                                state.budget[i])
+            )
+        
+        print(rewards)
+
     def run(self) -> None:
         print("Init seeds for all random things")
         initSeeds(self.tech_params.get("seed", 666))
@@ -99,7 +142,7 @@ class Pipeline:
         print("Create inital states")
 
         print("Distribute consumers among firms")
-        consumersToFirmsDistribution(
+        consumer_to_firm, firm_to_consumer = consumersToFirmsDistribution(
             num_consumers=self.environment_params["num_consumers"],
             num_firms=self.environment_params["num_firms"]
         )
@@ -110,26 +153,51 @@ class Pipeline:
         print(f"Start training neural networks, number of epochs: {self.environment_params['epochs']}")
         for i in range(self.environment_params["epochs"]):
             # code goes here
+            print("Init variables for new epoch")
             consumer_states: List[ConsumerState] = []
+            firm_states: List[FirmState] = []
+            government_states: List[GovernmentState] = []
+            available_items: List[List[float]] = [[0.0] * self.environment_params["num_firms"]]
+            items_demand: List[List[float]] = []
 
-            c_state = ConsumerState(
-                curr_tax=[0.0]*self.environment_params["num_consumers"],
-                item_prices=[[1000]*self.environment_params["num_firms"]]*self.environment_params["num_consumers"],
-                item_quantities=[[0]*self.environment_params["num_firms"]]*self.environment_params["num_consumers"],
-                wage=[0]*self.environment_params["num_consumers"],
-                working_hours=[0]*self.environment_params["num_consumers"],
-                labour_disutility=[self.environment_params["labour_disutility"]]*self.environment_params["num_consumers"],
-                crra_uf_param=[self.environment_params["crra_uf_param"]]*self.environment_params["num_consumers"],
-                budget=[0.0]*self.environment_params["num_consumers"]
-            )
-            # print(c_state.getConsumerState(j).shape)
-            for j in range(self.environment_params["num_consumers"]):
-                action = self.consumer_policy.act(c_state.getConsumerState(j))
-                action_items = action[::2]
-                action_probs = action[1::2]
-                print(action_items)
-                print(action_probs)
+            for t in range(self.environment_params["timesteps"]):
+                if t == 0:
+                    # initial simulation:
+                    # simulate consumers
+                    # backprop cosumer policy
+                    # no backprop for firm policy
+                    # simulate firm policy
+                    # no backprop for government policy
+                    # simulate government policy
+                    c_state = ConsumerState.initialState(
+                        self.environment_params["num_firms"],
+                        self.environment_params["num_consumers"]
+                    )
+                    self.simulateConsumer(c_state, [0]*self.environment_params["num_firms"],
+                                          [0]*self.environment_params["num_firms"],
+                                          consumer_to_firm)
                 break
+
+            
+
+            # c_state = ConsumerState(
+            #     curr_tax=[0.0]*self.environment_params["num_consumers"],
+            #     item_prices=[[1000]*self.environment_params["num_firms"]]*self.environment_params["num_consumers"],
+            #     item_quantities=[[0]*self.environment_params["num_firms"]]*self.environment_params["num_consumers"],
+            #     wage=[0]*self.environment_params["num_consumers"],
+            #     working_hours=[0]*self.environment_params["num_consumers"],
+            #     labour_disutility=[self.environment_params["labour_disutility"]]*self.environment_params["num_consumers"],
+            #     crra_uf_param=[self.environment_params["crra_uf_param"]]*self.environment_params["num_consumers"],
+            #     budget=[0.0]*self.environment_params["num_consumers"]
+            # )
+            # # print(c_state.getConsumerState(j).shape)
+            # for j in range(self.environment_params["num_consumers"]):
+            #     action = self.consumer_policy.act(c_state.getConsumerState(j))
+            #     action_items = action[::2]
+            #     action_probs = action[1::2]
+            #     print(action_items)
+            #     print(action_probs)
+            #     break
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ tech:
   device: "cpu"
   seed: 666
 environment:
-  num_consumers: 10
+  num_consumers: 15
   num_firms: 8
   labour_disutility: 0.01
   crra_uf_param: 0.1

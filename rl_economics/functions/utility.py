@@ -1,14 +1,20 @@
 from typing import List
+import numpy as np
 
 
-def consumerUtility(items_consumption: List[int],
+def consumerUtility(items_consumption: List[float],
+                    items_prices: List[int],
                     firms_working_hours: List[int],
                     labour_disutility: float,
-                    crra_uf_param: float) -> float:
+                    crra_uf_param: float,
+                    budget: float) -> float:
     assert_msg = "items_consumption and firms_working_hours should be equal length!"
     res_utility: float = 0.0
 
     assert len(items_consumption) == len(firms_working_hours), assert_msg
+
+    if np.dot(items_consumption, items_prices) > budget:
+        return -1.0
     
     for i, h in zip(items_consumption, firms_working_hours):
         res_utility += ((i + 1)**(1 - crra_uf_param) - 1) / (1 - crra_uf_param) - h*labour_disutility/2
