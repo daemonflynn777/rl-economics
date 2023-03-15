@@ -37,6 +37,18 @@ class Pipeline:
         self.government_params = self.simulation_config["government"]
 
         print(self.simulation_config)
+
+    def initMappingDicts(self) -> None:
+        self.possible_working_hours = {
+            k: v for k, v in enumerate(list(range(
+                self.consumer_params["model"]["working_hours"]["min"],
+                self.consumer_params["model"]["working_hours"]["max"] + 1,
+                self.consumer_params["model"]["working_hours"]["step"]
+            )))
+        }
+        # possible salaries
+        # possible prices
+        return None
     
     def initPolicies(self) -> None:
         print("Init consumer policy")
@@ -116,13 +128,24 @@ class Pipeline:
             item_demand = choices[:, i].reshape(-1)
             item_available = item_quantities[i]
             item_scaled_consumption.append(availableGoods(item_available, item_demand))
-        item_scaled_consumption = np.array(item_scaled_consumption).T
+        item_scaled_consumption = np.array(item_scaled_consumption).T # shape is (num_consumer, num_firms)
+
+        # calculate budget change for each consumer: + salary - taxes
+        # TODO: maybe create new state as a copy of current state and update budget in new state
+        payed_taxes = []
+        for i in range(self.environment_params["num_consumers"]):
+            consumer_payed_taxes = choices[i][-1] * state.wage[i] * state.curr_tax[i]
+            consumer_received_salary = choices[i][-1] * state.wage[i] * (1 - state.curr_tax[i])
+            payed_taxes.append(consumer_payed_taxes)
+            state.budget[i] += consumer_received_salary
+
+        working_hours_choices = choices[:, -1].reshape(-1) # shape is (num_consumers,)
 
         # calculate rewards
         for i in range(self.environment_params["num_consumers"]):
             consumer_items_consumption = item_scaled_consumption[i, :].reshape(-1).tolist()
             working_hours = [0]*self.environment_params["num_firms"]
-            working_hours[consumer_to_firm[i]] = state.working_hours[i]
+            working_hours[consumer_to_firm[i]] = choices[i][-1]
             rewards.append(
                 consumerUtility(consumer_items_consumption, item_prices, working_hours,
                                 self.environment_params["labour_disutility"],
@@ -130,11 +153,15 @@ class Pipeline:
                                 state.budget[i])
             )
         
-        print(rewards)
+        print(working_hours_choices)
+        return 
 
     def run(self) -> None:
         print("Init seeds for all random things")
         initSeeds(self.tech_params.get("seed", 666))
+
+        print("Initialize mapping dicts for possible salaries, prices etc.")
+        self.initMappingDicts()
 
         print("Start initializing policies")
         self.initPolicies()

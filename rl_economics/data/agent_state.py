@@ -11,7 +11,6 @@ class ConsumerState:
     item_prices: List[List[int]]
     item_quantities: List[List[int]]
     wage: List[int]
-    working_hours: List[int]
     labour_disutility: List[float]
     crra_uf_param: List[float]
     budget: List[float]
@@ -24,7 +23,6 @@ class ConsumerState:
                      item_prices: int = 0,
                      item_quantities: int = 0,
                      wage: int = 0,
-                     working_hours: int = 0,
                      labour_disutility: float = 0.01,
                      crra_uf_param: float = 0.1,
                      budget: float = 0.0):
@@ -33,7 +31,6 @@ class ConsumerState:
             [[item_prices]*num_firms]*num_consumers,
             [[item_quantities]*num_firms]*num_consumers,
             [wage]*num_consumers,
-            [working_hours]*num_consumers,
             [labour_disutility]*num_consumers,
             [crra_uf_param]*num_consumers,
             [budget]*num_consumers
@@ -44,7 +41,6 @@ class ConsumerState:
                     item_prices: List[List[int]],
                     item_quantities: List[List[int]],
                     wage: List[int],
-                    working_hours: List[int],
                     labour_disutility: List[float],
                     crra_uf_param: List[float],
                     budget: List[float]) -> None:
@@ -52,7 +48,6 @@ class ConsumerState:
         self.item_prices = item_prices
         self.item_quantities = item_quantities
         self.wage = wage
-        self.working_hours = working_hours
         self.curr_tax = labour_disutility
         self.curr_tax = crra_uf_param
         self.curr_tax = budget
@@ -66,7 +61,6 @@ class ConsumerState:
 
         state.append(self.curr_tax[consumer_id])
         state.append(self.wage[consumer_id])
-        state.append(self.working_hours[consumer_id])
         state.append(self.labour_disutility[consumer_id])
         state.append(self.crra_uf_param[consumer_id])
         state.append(self.budget[consumer_id])
