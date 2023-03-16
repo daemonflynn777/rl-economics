@@ -1,6 +1,6 @@
 tech:
   device: "cpu"
-  seed: 666
+  seed: 1488
 environment:
   num_consumers: 15
   num_firms: 8

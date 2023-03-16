@@ -22,6 +22,7 @@ from rl_economics.data.agent_state import (
     FirmState,
     GovernmentState
 )
+from rl_economics import config as cfg
 
 
 class Pipeline:
@@ -40,14 +41,37 @@ class Pipeline:
 
     def initMappingDicts(self) -> None:
         self.possible_working_hours = {
-            k: v for k, v in enumerate(list(range(
+            k: v for k, v in enumerate(list(np.arange(
                 self.consumer_params["model"]["working_hours"]["min"],
                 self.consumer_params["model"]["working_hours"]["max"] + 1,
                 self.consumer_params["model"]["working_hours"]["step"]
             )))
         }
-        # possible salaries
-        # possible prices
+        self.possible_salaries = {
+            k: v for k, v in enumerate(list(np.arange(
+                self.firm_params["model"]["wages"]["min"],
+                self.firm_params["model"]["wages"]["max"] + 1,
+                self.firm_params["model"]["wages"]["step"]
+            )))
+        }
+        self.possible_prices = {
+            k: v for k, v in enumerate(list(np.arange(
+                self.firm_params["model"]["prices"]["min"],
+                self.firm_params["model"]["prices"]["max"] + 1,
+                self.firm_params["model"]["prices"]["step"]
+            )))
+        }
+        self.possible_taxes = {
+            k: v for k, v in enumerate(list(np.arange(
+                self.government_params["model"]["taxes"]["min"],
+                self.government_params["model"]["taxes"]["max"] + 0.1,
+                self.government_params["model"]["taxes"]["step"]
+            )))
+        }
+        self.consumer_to_firm, self.firm_to_consumer = consumersToFirmsDistribution(
+            num_consumers=self.environment_params["num_consumers"],
+            num_firms=self.environment_params["num_firms"]
+        )
         return None
     
     def initPolicies(self) -> None:
@@ -110,19 +134,19 @@ class Pipeline:
 
     def simulateConsumer(self, state: ConsumerState, item_prices: List[int],
                          item_quantities: List[int], consumer_to_firm: dict):
-        choices = []
-        losses = []
-        rewards = []
-        item_scaled_consumption = []
+        choices: list = []
+        log_probs: list = [] # shape is (num_consumer, num_firms + 1)
+        rewards: list = []
+        item_scaled_consumption: list = []
 
         # get actions for each consumer
         for i in range(self.environment_params["num_consumers"]):
             policy_input = state.getConsumerState(i)
             policy_output = self.consumer_policy.act(policy_input)
             choices.append(policy_output[::2])
-            losses.append(policy_output[1::2])
+            log_probs.append(policy_output[1::2])
         
-        choices = np.array(choices)
+        choices = np.array(choices) # shape is (num_consumer, num_firms + 1)
         # get item consumption for each consumer
         for i in range(self.environment_params["num_firms"]):
             item_demand = choices[:, i].reshape(-1)
@@ -132,29 +156,38 @@ class Pipeline:
 
         # calculate budget change for each consumer: + salary - taxes
         # TODO: maybe create new state as a copy of current state and update budget in new state
-        payed_taxes = []
+        payed_taxes: list = []
+        budgets_before_purchase: list = []
         for i in range(self.environment_params["num_consumers"]):
             consumer_payed_taxes = choices[i][-1] * state.wage[i] * state.curr_tax[i]
             consumer_received_salary = choices[i][-1] * state.wage[i] * (1 - state.curr_tax[i])
             payed_taxes.append(consumer_payed_taxes)
-            state.budget[i] += consumer_received_salary
-
+            budgets_before_purchase.append(state.budget[i] + consumer_received_salary)
+            
+        payed_taxes = np.array(payed_taxes) # shape is (num_consumers,)
+        budgets_before_purchase = np.array(budgets_before_purchase) # shape is (num_consumers,)
         working_hours_choices = choices[:, -1].reshape(-1) # shape is (num_consumers,)
 
-        # calculate rewards
+        # calculate rewards and consumers' budgets after purchase
+        budgets_after_purchase: list = []
         for i in range(self.environment_params["num_consumers"]):
             consumer_items_consumption = item_scaled_consumption[i, :].reshape(-1).tolist()
             working_hours = [0]*self.environment_params["num_firms"]
             working_hours[consumer_to_firm[i]] = choices[i][-1]
-            rewards.append(
-                consumerUtility(consumer_items_consumption, item_prices, working_hours,
-                                self.environment_params["labour_disutility"],
-                                self.environment_params["crra_uf_param"],
-                                state.budget[i])
-            )
+            reward, budget_after_purchase = consumerUtility(consumer_items_consumption, item_prices,
+                                                            working_hours, self.environment_params["labour_disutility"],
+                                                            self.environment_params["crra_uf_param"],
+                                                            budgets_before_purchase[i])
+            rewards.append(reward)
+            budgets_after_purchase.append(budget_after_purchase)
         
+        rewards = np.array(rewards) # shape is (num_consumers,)
+        budgets_after_purchase = np.array(budgets_after_purchase) # shape is (num_consumers,)
+
         print(working_hours_choices)
-        return 
+
+        return (item_scaled_consumption, working_hours_choices, budgets_after_purchase,
+                payed_taxes, rewards, log_probs)
 
     def run(self) -> None:
         print("Init seeds for all random things")
@@ -168,12 +201,6 @@ class Pipeline:
 
         print("Create inital states")
 
-        print("Distribute consumers among firms")
-        consumer_to_firm, firm_to_consumer = consumersToFirmsDistribution(
-            num_consumers=self.environment_params["num_consumers"],
-            num_firms=self.environment_params["num_firms"]
-        )
-
         print("Set initial states for consumers, firms and government")
         # code goes here
 
@@ -181,28 +208,52 @@ class Pipeline:
         for i in range(self.environment_params["epochs"]):
             # code goes here
             print("Init variables for new epoch")
-            consumer_states: List[ConsumerState] = []
-            firm_states: List[FirmState] = []
-            government_states: List[GovernmentState] = []
-            available_items: List[List[float]] = [[0.0] * self.environment_params["num_firms"]]
-            items_demand: List[List[float]] = []
+            consumers_rewards: list = []
+            consumers_log_probs: list = []
 
             for t in range(self.environment_params["timesteps"]):
                 if t == 0:
                     # initial simulation:
+                    # create consumers state
                     # simulate consumers
-                    # backprop cosumer policy
-                    # no backprop for firm policy
+                    # create firms state
                     # simulate firm policy
-                    # no backprop for government policy
+                    # create government policy
                     # simulate government policy
                     c_state = ConsumerState.initialState(
                         self.environment_params["num_firms"],
                         self.environment_params["num_consumers"]
                     )
-                    self.simulateConsumer(c_state, [0]*self.environment_params["num_firms"],
-                                          [0]*self.environment_params["num_firms"],
-                                          consumer_to_firm)
+                    (item_scaled_consumption, working_hours_choices,
+                     budgets_after_purchase, consumers_payed_taxes,
+                     consumers_rewards, consumers_log_probs) = self.simulateConsumer(
+                        c_state,
+                        [0]*self.environment_params["num_firms"],
+                        [0]*self.environment_params["num_firms"],
+                        self.consumer_to_firm
+                    )
+
+                    # maybe make it a separate method
+                    total_labour_per_firm = [0] * self.environment_params["num_firms"]
+                    for i in range(self.environment_params["num_consumers"]):
+                        firm_id = self.consumer_to_firm[i]
+                        num_hours = self.possible_working_hours[working_hours_choices[i]]
+                        total_labour_per_firm[firm_id] += num_hours
+                    firms_capitals = [
+                        cfg.FIRMS_INITIAL_STATES[i]["capital"] for i in range(self.environment_params["num_firms"])
+                    ]
+                    firms_pf_alphas = [
+                        cfg.FIRMS_INITIAL_STATES[i]["pf_alpha"] for i in range(self.environment_params["num_firms"])
+                    ]
+                    f_state = FirmState(
+                        total_labour_per_firm,
+                        firms_capitals,
+                        firms_pf_alphas,
+                        [2200000]*self.environment_params["num_firms"],
+                        [0.0]*self.environment_params["num_firms"],
+                        [0.0]*self.environment_params["num_firms"]
+                    )
+                    print(f_state)
                 break
 
             

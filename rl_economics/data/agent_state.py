@@ -71,28 +71,27 @@ class ConsumerState:
         return np.array(state)
         
 
-
 @dataclass
 class FirmState:
     total_labour: List[int]
     capital: List[float]
+    pf_alphas: List[float]
     budget: List[float]
     curr_tax: List[float]
-    firm_number: List[List[int]]
     investments: List[float]
 
     def updateState(self,
                     total_labour: List[int],
                     capital: List[float],
+                    pf_alphas: List[float],
                     budget: List[float],
                     curr_tax: List[float],
-                    firm_number: List[List[int]],
                     investments: List[float]) -> None:
         self.total_labour = total_labour
         self.capital = capital
+        self.pf_alphas = pf_alphas
         self.budget = budget
         self.curr_tax = curr_tax
-        self.firm_number = firm_number
         self.investments = investments
 
         return None

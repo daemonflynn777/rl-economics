@@ -14,12 +14,12 @@ def consumerUtility(items_consumption: List[float],
     assert len(items_consumption) == len(firms_working_hours), assert_msg
 
     if np.dot(items_consumption, items_prices) > budget:
-        return -1.0
+        return -1.0, budget
     
     for i, h in zip(items_consumption, firms_working_hours):
         res_utility += ((i + 1)**(1 - crra_uf_param) - 1) / (1 - crra_uf_param) - h*labour_disutility/2
     
-    return res_utility
+    return res_utility, budget - np.dot(items_consumption, items_prices)
 
 
 def firmUtility(price: int, quantity: int, salary: int,
