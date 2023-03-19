@@ -95,6 +95,21 @@ class FirmState:
         self.investments = investments
 
         return None
+    
+    def getFirmState(self, firm_id: int) -> np.ndarray:
+        state = []
+        firm_number = [0]*len(self.curr_tax)
+        firm_number[firm_id] = 1
+
+        state.append(self.total_labour[firm_id])
+        state.append(self.capital[firm_id])
+        state.append(self.pf_alphas[firm_id])
+        state.append(self.budget[firm_id])
+        state.append(self.curr_tax[firm_id])
+        state.append(self.investments[firm_id])
+        state.extend(firm_number)
+
+        return np.array(state)
 
 
 @dataclass

@@ -1,11 +1,12 @@
 tech:
   device: "cpu"
-  seed: 1488
+  seed: 228
 environment:
   num_consumers: 15
   num_firms: 8
   labour_disutility: 0.01
   crra_uf_param: 0.1
+  investments_percent: 0.1
   timesteps: 10
   epochs: 1
 consumer:

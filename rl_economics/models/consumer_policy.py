@@ -40,9 +40,8 @@ class ConsumerPolicy(BasePolicy):
         for h in range(8):
             self.head_indices.append((h*num_items, h*num_items + num_items))
         self.head_indices.append((8*num_items, 8*num_items + num_working_hours))
-        print(self.head_indices)
     
-    def forward(self, x: torch.Tensor) -> Tuple[List[float]]:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.mlp(x)
 
         x_0 = self.item_head_0(x)
