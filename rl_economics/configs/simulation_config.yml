@@ -9,6 +9,11 @@ environment:
   investments_percent: 0.1
   timesteps: 10
   epochs: 1
+  inital:
+    firm_budget: 2200000
+    items_q: 0
+    items_p: 0
+    taxes: 0.0
 consumer:
   model:
     mlp_layer_width: 128
