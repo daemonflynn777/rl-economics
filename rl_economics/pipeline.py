@@ -245,12 +245,12 @@ class Pipeline:
                         self.consumer_to_firm
                     )
 
-                    # maybe make it a separate method
+                    # maybe make it a separate method or move into simulateFirms
                     total_goods_sales = []
-                    total_taxes = []
+                    firms_payed_taxes = []
                     for sales, price in zip(np.sum(item_scaled_consumption, axis=0), [0]*self.environment_params["num_firms"]):
                         total_goods_sales.append(sales*price*(1.0-0.0))
-                        total_taxes.append(sales*price*0.0) 
+                        firms_payed_taxes.append(sales*price*0.0) 
                     total_goods_sales = np.array(total_goods_sales)
                     total_labour_per_firm = [0] * self.environment_params["num_firms"]
                     for i in range(self.environment_params["num_consumers"]):
