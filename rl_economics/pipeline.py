@@ -113,11 +113,14 @@ class Pipeline:
         num_taxes = int((self.government_params["model"]["taxes"]["max"] -
                          self.government_params["model"]["taxes"]["min"]) //
                         self.government_params["model"]["taxes"]["step"])
+        government_num_unput_features = len(GovernmentState.__dict__["__match_args__"])
         self.government_policy = GovernmentPolicy(
-            num_input_features=1,
+            num_input_features=government_num_unput_features,
             num_taxes=num_taxes,
-            mlp_layer_width=self.government_params["model"].get("mlp_layer_width", 128)
+            mlp_layer_width=self.government_params["model"].get("mlp_layer_width", 128),
+            device=self.tech_params["device"]
         )
+        self.government_policy.to(self.tech_params["device"])
     
     def initOptimizers(self) -> None:
         self.consumer_optimizer = Adagrad(params=self.consumer_policy.parameters(),
