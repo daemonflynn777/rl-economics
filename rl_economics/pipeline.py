@@ -1,6 +1,6 @@
 import os
 import fire
-from torch.optim import Adagrad
+from torch.optim import Adam
 from typing import List
 import numpy as np
 
@@ -72,6 +72,20 @@ class Pipeline:
             num_consumers=self.environment_params["num_consumers"],
             num_firms=self.environment_params["num_firms"]
         )
+
+        # Consumers' variables
+        self.consumers_budgets = [0.0]*self.environment_params["num_consumers"]
+        self.consumers_working_hours = [0]*self.environment_params["num_consumers"]
+        self.consumers_wages = [0]*self.environment_params["num_consumers"]
+
+        # Firms' variables
+        self.items_quantities = [0.0]*self.environment_params["num_firms"]
+        self.items_prices = [0]*self.environment_params["num_firms"]
+        self.firms_total_labour = [0]*self.environment_params["num_firms"]
+        self.firms_wages = [0]*self.environment_params["num_firms"]
+
+        # Government's variales
+        self.tax_rate = 0.0
         return None
     
     def initPolicies(self) -> None:
@@ -113,7 +127,8 @@ class Pipeline:
         num_taxes = int((self.government_params["model"]["taxes"]["max"] -
                          self.government_params["model"]["taxes"]["min"]) //
                         self.government_params["model"]["taxes"]["step"])
-        government_num_unput_features = len(GovernmentState.__dict__["__match_args__"])
+        government_num_unput_features = (len(GovernmentState.__dict__["__match_args__"]) - 2 +
+                                         2*self.environment_params["num_firms"])
         self.government_policy = GovernmentPolicy(
             num_input_features=government_num_unput_features,
             num_taxes=num_taxes,
@@ -123,13 +138,13 @@ class Pipeline:
         self.government_policy.to(self.tech_params["device"])
     
     def initOptimizers(self) -> None:
-        self.consumer_optimizer = Adagrad(params=self.consumer_policy.parameters(),
+        self.consumer_optimizer = Adam(params=self.consumer_policy.parameters(),
                                           lr=self.consumer_params["optimizer"]["lr"])
         
-        self.firm_optimizer = Adagrad(params=self.firm_policy.parameters(),
+        self.firm_optimizer = Adam(params=self.firm_policy.parameters(),
                                       lr=self.firm_params["optimizer"]["lr"])
         
-        self.government_optimizer = Adagrad(params=self.government_policy.parameters(),
+        self.government_optimizer = Adam(params=self.government_policy.parameters(),
                                             lr=self.government_params["optimizer"]["lr"])
 
     def initLosses(self) -> None:
@@ -138,25 +153,34 @@ class Pipeline:
     def reinforce(self) -> None:
         pass
 
-    def simulateConsumers(self, state: ConsumerState, item_prices: List[int],
-                         item_quantities: List[int], consumer_to_firm: dict):
+    def simulateConsumers(self, state: ConsumerState, consumer_to_firm: dict):
         choices: list = [] # shape is (num_consumer, num_firms + 1)
         log_probs: list = [] # shape is (num_consumer, num_firms + 1)
         rewards: list = []
         item_scaled_consumption: list = []
 
-        # get actions for each consumer
+        c_state = ConsumerState(
+            self.tax_rate,
+            self.items_prices,
+            self.items_quantities,
+            self.consumers_wages,
+            self.environment_params["labour_disutility"],
+            self.environment_params["crra_uf_param"],
+            self.consumers_budgets
+        )
+
+        # Get actions for each consumer
         for i in range(self.environment_params["num_consumers"]):
-            policy_input = state.getConsumerState(i)
+            policy_input = c_state.getConsumerState(i)
             policy_output = self.consumer_policy.act(policy_input)
             choices.append(policy_output[::2])
             log_probs.append(policy_output[1::2])
-        
         choices = np.array(choices) # shape is (num_consumer, num_firms + 1)
-        # get item consumption for each consumer
+
+        # Get item consumption for each consumer
         for i in range(self.environment_params["num_firms"]):
-            item_demand = choices[:, i].reshape(-1)
-            item_available = item_quantities[i]
+            item_demand = choices[:, i].reshape(-1) # TODO: map choice to real quantity
+            item_available = self.items_quantities[i]
             item_scaled_consumption.append(availableGoods(item_available, item_demand))
         item_scaled_consumption = np.array(item_scaled_consumption).T # shape is (num_consumer, num_firms)
 
@@ -165,10 +189,10 @@ class Pipeline:
         payed_taxes: list = []
         budgets_before_purchase: list = []
         for i in range(self.environment_params["num_consumers"]):
-            consumer_payed_taxes = choices[i][-1] * state.wage[i] * state.curr_tax[i]
-            consumer_received_salary = choices[i][-1] * state.wage[i] * (1 - state.curr_tax[i])
+            consumer_payed_taxes = choices[i][-1]*self.consumers_wages[i]*self.tax_rate
+            consumer_received_salary = choices[i][-1]*self.consumers_wages[i]*(1-self.tax_rate)
             payed_taxes.append(consumer_payed_taxes)
-            budgets_before_purchase.append(state.budget[i] + consumer_received_salary)
+            budgets_before_purchase.append(self.consumers_budgets[i] + consumer_received_salary)
             
         payed_taxes = np.array(payed_taxes) # shape is (num_consumers,)
         budgets_before_purchase = np.array(budgets_before_purchase) # shape is (num_consumers,)
@@ -179,13 +203,19 @@ class Pipeline:
         for i in range(self.environment_params["num_consumers"]):
             consumer_items_consumption = item_scaled_consumption[i, :].reshape(-1).tolist()
             working_hours = [0]*self.environment_params["num_firms"]
-            working_hours[consumer_to_firm[i]] = choices[i][-1]
-            reward, budget_after_purchase = consumerUtility(consumer_items_consumption, item_prices,
+            self.consumers_working_hours[i] = choices[i][-1]
+            working_hours[consumer_to_firm[i]] = self.consumers_working_hours[i]
+            print(consumer_items_consumption)
+            print(self.items_prices)
+            print(budgets_before_purchase[i])
+            reward, budget_after_purchase = consumerUtility(consumer_items_consumption, self.items_prices,
                                                             working_hours, self.environment_params["labour_disutility"],
                                                             self.environment_params["crra_uf_param"],
                                                             budgets_before_purchase[i])
             rewards.append(reward)
             budgets_after_purchase.append(budget_after_purchase)
+        
+        # Update env vars such as cosumers' budgets, items iventory etc.
         
         rewards = np.array(rewards) # shape is (num_consumers,)
         budgets_after_purchase = np.array(budgets_after_purchase) # shape is (num_consumers,)
@@ -215,8 +245,40 @@ class Pipeline:
         # update prices
         # update wages
 
-    def simulateGovernment(self):
-        pass
+    def simulateGovernment(self, consumers_payed_taxes: List[float], firms_payed_taxes: List[float],
+                           items_quantities: List[float], items_prices: List[float],
+                           consumers_working_hours: List[int], firms_payed_wages: List[int],
+                           consumers_rewards: List[float], firms_rewards: List[float]):
+        choices: list = [] # shape is (1,)
+        log_probs: list = [] # shape is (1,)
+        rewards: list = []
+
+        distributed_tax = ((np.sum(consumers_payed_taxes)+np.sum(firms_payed_taxes))/
+                           self.environment_params["num_consumers"])
+        g_state = GovernmentState(
+            self.environment_params["num_consumers"],
+            self.environment_params["num_firms"],
+            np.sum(consumers_working_hours),
+            np.sum(firms_payed_wages),
+            np.sum(consumers_payed_taxes)+np.sum(firms_payed_taxes),
+            items_quantities,
+            items_prices
+        )
+
+        choices = np.array(choices)
+
+        policy_input = g_state.getGovernmentState()
+        policy_output = self.government_policy.act(policy_input)
+        choices.append(policy_output[0])
+        log_probs.append(policy_output[1])
+
+        rewards.append(
+            np.sum(consumers_rewards)/self.consumer_params["reward_scaling_factor"] +
+            np.sum(firms_rewards)/self.firm_params["reward_scaling_factor"]
+        )
+        rewards = np.array(rewards)
+
+        return choices, log_probs, rewards, distributed_tax
 
     def run(self) -> None:
         print("Init seeds for all random things")
@@ -259,8 +321,6 @@ class Pipeline:
                      budgets_after_purchase, consumers_payed_taxes,
                      consumers_rewards, consumers_log_probs) = self.simulateConsumers(
                         c_state,
-                        [0]*self.environment_params["num_firms"],
-                        [0]*self.environment_params["num_firms"],
                         self.consumer_to_firm
                     )
 
@@ -302,6 +362,8 @@ class Pipeline:
                         initial_investments
                     )
                     prices_choices, wages_choices, firms_log_probs = self.simulateFirms(f_state)
+
+                    tax_choice, government_log_prob, government_reward, distributed_tax = self.simulateGovernment()
                 break
 
             

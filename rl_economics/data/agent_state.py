@@ -7,12 +7,12 @@ import numpy as np
 
 @dataclass
 class ConsumerState:
-    curr_tax: List[float]
-    item_prices: List[List[int]]
-    item_quantities: List[List[int]]
+    curr_tax: float
+    item_prices: List[int]
+    item_quantities: List[int]
     wage: List[int]
-    labour_disutility: List[float]
-    crra_uf_param: List[float]
+    labour_disutility: float
+    crra_uf_param: float
     budget: List[float]
 
     @classmethod
@@ -27,22 +27,22 @@ class ConsumerState:
                      crra_uf_param: float = 0.1,
                      budget: float = 0.0):
         return cls(
-            [curr_tax]*num_consumers,
-            [[item_prices]*num_firms]*num_consumers,
-            [[item_quantities]*num_firms]*num_consumers,
+            curr_tax,
+            [item_prices]*num_firms,
+            [item_quantities]*num_firms,
             [wage]*num_consumers,
-            [labour_disutility]*num_consumers,
-            [crra_uf_param]*num_consumers,
+            labour_disutility,
+            crra_uf_param,
             [budget]*num_consumers
         )
 
     def updateState(self,
-                    curr_tax: List[float],
-                    item_prices: List[List[int]],
-                    item_quantities: List[List[int]],
+                    curr_tax: float,
+                    item_prices: List[int],
+                    item_quantities: List[int],
                     wage: List[int],
-                    labour_disutility: List[float],
-                    crra_uf_param: List[float],
+                    labour_disutility: float,
+                    crra_uf_param: float,
                     budget: List[float]) -> None:
         self.curr_tax = curr_tax
         self.item_prices = item_prices
@@ -56,16 +56,16 @@ class ConsumerState:
     
     def getConsumerState(self, consumer_id: int) -> np.ndarray:
         state = []
-        consumer_number = [0]*len(self.curr_tax)
+        consumer_number = [0]*len(self.wage)
         consumer_number[consumer_id] = 1
 
-        state.append(self.curr_tax[consumer_id])
+        state.append(self.curr_tax)
         state.append(self.wage[consumer_id])
-        state.append(self.labour_disutility[consumer_id])
-        state.append(self.crra_uf_param[consumer_id])
+        state.append(self.labour_disutility)
+        state.append(self.crra_uf_param)
         state.append(self.budget[consumer_id])
-        state.extend(self.item_prices[consumer_id])
-        state.extend(self.item_quantities[consumer_id])
+        state.extend(self.item_prices)
+        state.extend(self.item_quantities)
         state.extend(consumer_number)
 
         return np.array(state)
@@ -114,27 +114,43 @@ class FirmState:
 
 @dataclass
 class GovernmentState:
-    number_of_consumers: List[int]
-    number_of_firms: List[int]
-    total_hours_worked: List[int]
-    item_prices: List[List[int]]
-    item_quantities: List[List[int]]
-    total_wage_payed: List[int]
+    number_of_consumers: int
+    number_of_firms: int
+    total_hours_worked: int
+    total_wage_payed: int
+    total_tax_payed: float
+    item_prices: List[int]
+    item_quantities: List[int]
 
     def updateState(self,
-                    number_of_consumers: List[int],
-                    number_of_firms: List[int],
-                    total_hours_worked: List[int],
-                    item_prices: List[List[int]],
-                    item_quantities: List[List[int]],
-                    total_wage_payed: List[int]) -> None:
+                    number_of_consumers: int,
+                    number_of_firms: int,
+                    total_hours_worked: int,
+                    total_wage_payed: int,
+                    total_tax_payed: float,
+                    item_prices: List[int],
+                    item_quantities: List[int],) -> None:
         self.number_of_consumers = number_of_consumers
         self.number_of_firms = number_of_firms
         self.total_hours_worked = total_hours_worked
+        self.total_wage_payed = total_wage_payed
+        self.total_tax_payed = total_tax_payed
         self.item_prices = item_prices
         self.item_quantities = item_quantities
-        self.total_wage_payed = total_wage_payed
 
         return None
+
+    def getGovernmentState(self) -> np.ndarray:
+        state = []
+
+        state.append(self.number_of_consumers)
+        state.append(self.number_of_firms)
+        state.append(self.total_hours_worked)
+        state.append(self.total_wage_payed)
+        state.append(self.total_tax_payed)
+        state.extend(self.item_prices)
+        state.extend(self.item_quantities)
+
+        return np.array(state)
     
 print(ConsumerState.__dict__["__match_args__"])
