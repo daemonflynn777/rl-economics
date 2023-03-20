@@ -200,6 +200,20 @@ class Pipeline:
             policy_output = self.firm_policy.act(policy_input)
             choices.append(policy_output[::2])
             log_probs.append(policy_output[1::2])
+        
+        choices = np.array(choices)
+
+        price_choices = choices[:, 0]
+        wage_choices = choices[:, 1]
+
+        return price_choices, wage_choices, log_probs
+        
+        # update item quantities
+        # update prices
+        # update wages
+
+    def simulateGovernment(self):
+        pass
 
     def run(self) -> None:
         print("Init seeds for all random things")
@@ -222,6 +236,8 @@ class Pipeline:
             print("Init variables for new epoch")
             consumers_rewards: list = []
             consumers_log_probs: list = []
+            firms_rewards = []
+            firms_log_probs = []
 
             for t in range(self.environment_params["timesteps"]):
                 if t == 0:
@@ -249,10 +265,10 @@ class Pipeline:
                     total_goods_sales = []
                     firms_payed_taxes = []
                     for sales, price in zip(np.sum(item_scaled_consumption, axis=0), [0]*self.environment_params["num_firms"]):
-                        total_goods_sales.append(sales*price*(1.0-0.0))
+                        total_goods_sales.append(sales*price*(1.0-0.0)) # these are actually firms' rewards
                         firms_payed_taxes.append(sales*price*0.0) 
                     total_goods_sales = np.array(total_goods_sales)
-                    total_labour_per_firm = [0] * self.environment_params["num_firms"]
+                    total_labour_per_firm = [0] * self.environment_params["num_firms"] # add produced items
                     for i in range(self.environment_params["num_consumers"]):
                         firm_id = self.consumer_to_firm[i]
                         num_hours = self.possible_working_hours[working_hours_choices[i]]
@@ -282,7 +298,7 @@ class Pipeline:
                         [0.0]*self.environment_params["num_firms"],
                         initial_investments
                     )
-                    self.simulateFirms(f_state)
+                    prices_choices, wages_choices, firms_log_probs = self.simulateFirms(f_state)
                 break
 
             

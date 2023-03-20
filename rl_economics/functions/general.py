@@ -15,15 +15,13 @@ def consumersToFirmsDistribution(num_consumers: int,
 
     return consumer_to_firm, firm_to_consumer
 
-# arr = consumersToFirmsDistribution(100, 8)
-# d = defaultdict(int)
-# for v in arr:
-#     d[v] += 1
-# print(arr)
-# print(d)
 
 def availableGoods(available_quantity: int,
                    desired_quantity: np.ndarray) -> np.array:
     scaling_coeff = available_quantity / desired_quantity.sum()
 
     return desired_quantity * scaling_coeff
+
+
+def productionFunction(labour: float, capital: float, alpha: float) -> float:
+    return (capital**(1-alpha))*(labour**alpha)

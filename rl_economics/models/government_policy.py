@@ -1,13 +1,16 @@
 import torch
 from torch import nn
+from torch.distributions import Categorical
+import torch.nn.functional as F
 from typing import Tuple, List
+import numpy as np
 
 from rl_economics.models.base_policy import BasePolicy
 
 
 class GovernmentPolicy(BasePolicy):
     def __init__(self, num_input_features: int, num_taxes: int,
-                 mlp_layer_width: int = 128):
+                 mlp_layer_width: int = 128, device: str = "cpu"):
         super().__init__()
 
         self.mlp = nn.Sequential(
@@ -16,13 +19,21 @@ class GovernmentPolicy(BasePolicy):
             nn.Linear(mlp_layer_width, mlp_layer_width),
             nn.ReLU(),
             nn.Linear(mlp_layer_width, mlp_layer_width),
+            nn.ReLU()
         )
 
-        self.working_hours_head = nn.Linear(mlp_layer_width, num_taxes)
+        self.tax_head = nn.Linear(mlp_layer_width, num_taxes)
     
-    def forward(self, x: torch.Tensor) -> Tuple[List[float]]:
-        x = nn.ReLU(self.mlp(x))
-        return -1
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.mlp(x)
+
+        x_tax = self.tax_head(x)
+        return F.softmax(x_tax, dim=1)
     
-    def act(self):
-        pass
+    def act(self, state: np.ndarray):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
+        probs = self.forward(state).cpu()
+        m_tax = Categorical(probs)
+
+        action_tax = m_tax.sample()
+        return action_tax.item(), m_tax.log_prob(action_tax)
