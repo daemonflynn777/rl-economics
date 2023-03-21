@@ -7,6 +7,7 @@ environment:
   labour_disutility: 0.01
   crra_uf_param: 0.1
   investments_percent: 0.1
+  discount_factor: 0.9
   timesteps: 10
   epochs: 1
   inital:

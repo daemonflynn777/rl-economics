@@ -83,10 +83,20 @@ class ConsumerPolicy(BasePolicy):
         action_6 = m_6.sample()
         action_7 = m_7.sample()
         action_hours = m_hours.sample()
+        composite_prob = (
+            torch.exp(m_0.log_prob(action_0)) * torch.exp(m_1.log_prob(action_1)) * torch.exp(m_2.log_prob(action_2)) *
+            torch.exp(m_3.log_prob(action_3)) * torch.exp(m_4.log_prob(action_4)) * torch.exp(m_5.log_prob(action_5)) *
+            torch.exp(m_6.log_prob(action_6)) * torch.exp(m_7.log_prob(action_7)) * torch.exp(m_hours.log_prob(action_hours))
+        )
+        log_composite_prob = torch.log(composite_prob)
         return [
-            action_0.item(), m_0.log_prob(action_0), action_1.item(), m_1.log_prob(action_1),
-            action_2.item(), m_2.log_prob(action_1), action_3.item(), m_3.log_prob(action_3),
-            action_4.item(), m_4.log_prob(action_4), action_5.item(), m_5.log_prob(action_5),
-            action_6.item(), m_6.log_prob(action_6), action_7.item(), m_7.log_prob(action_7),
-            action_hours.item(), m_hours.log_prob(action_hours),
+            action_0.item(), action_1.item(), action_2.item(), action_3.item(), action_4.item(),
+            action_5.item(), action_6.item(), action_7.item(), action_hours.item(), log_composite_prob
         ]
+        # return [
+        #     action_0.item(), m_0.log_prob(action_0), action_1.item(), m_1.log_prob(action_1),
+        #     action_2.item(), m_2.log_prob(action_1), action_3.item(), m_3.log_prob(action_3),
+        #     action_4.item(), m_4.log_prob(action_4), action_5.item(), m_5.log_prob(action_5),
+        #     action_6.item(), m_6.log_prob(action_6), action_7.item(), m_7.log_prob(action_7),
+        #     action_hours.item(), m_hours.log_prob(action_hours),
+        # ]

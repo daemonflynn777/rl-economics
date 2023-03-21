@@ -13,6 +13,8 @@ class GovernmentPolicy(BasePolicy):
                  mlp_layer_width: int = 128, device: str = "cpu"):
         super().__init__()
 
+        self.device = device
+
         self.mlp = nn.Sequential(
             nn.Linear(num_input_features, mlp_layer_width),
             nn.ReLU(),

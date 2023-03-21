@@ -1,5 +1,6 @@
 import os
 import fire
+import torch
 from torch.optim import Adam
 from typing import List
 import numpy as np
@@ -7,7 +8,8 @@ import numpy as np
 from rl_economics.utils.misc import loadYamlConfig, initSeeds
 from rl_economics.functions.general import (
     consumersToFirmsDistribution,
-    availableGoods
+    availableGoods,
+    productionFunction
 )
 from rl_economics.functions.utility import (
     consumerUtility
@@ -83,9 +85,13 @@ class Pipeline:
         self.items_prices = [0]*self.environment_params["num_firms"]
         self.firms_total_labour = [0]*self.environment_params["num_firms"]
         self.firms_wages = [0]*self.environment_params["num_firms"]
+        self.firms_budgets = [2200000]*self.environment_params["num_firms"]
+        self.firms_capitals = [cfg.FIRMS_INITIAL_STATES[i]["capital"] for i in range(self.environment_params["num_firms"])]
+        self.firms_pf_alphas = [cfg.FIRMS_INITIAL_STATES[i]["pf_alpha"] for i in range(self.environment_params["num_firms"])]
 
         # Government's variales
         self.tax_rate = 0.0
+        self.distributed_tax = 0.0
         return None
     
     def initPolicies(self) -> None:
@@ -153,11 +159,10 @@ class Pipeline:
     def reinforce(self) -> None:
         pass
 
-    def simulateConsumers(self, state: ConsumerState, consumer_to_firm: dict):
-        choices: list = [] # shape is (num_consumer, num_firms + 1)
-        log_probs: list = [] # shape is (num_consumer, num_firms + 1)
-        rewards: list = []
-        item_scaled_consumption: list = []
+    def simulateConsumers(self, consumer_to_firm: dict):
+        choices: list = [] # shape is (num_consumers, num_firms + 1)
+        log_probs: list = [] # shape is (num_consumers, num_firms + 1)
+        rewards: list = [] # shape is (num_consumers,)
 
         c_state = ConsumerState(
             self.tax_rate,
@@ -173,219 +178,240 @@ class Pipeline:
         for i in range(self.environment_params["num_consumers"]):
             policy_input = c_state.getConsumerState(i)
             policy_output = self.consumer_policy.act(policy_input)
-            choices.append(policy_output[::2])
-            log_probs.append(policy_output[1::2])
+            choices.append(policy_output[:-1])
+            log_probs.append(policy_output[-1])
+            # choices.append(policy_output[::2])
+            # log_probs.append(policy_output[1::2])
         choices = np.array(choices) # shape is (num_consumer, num_firms + 1)
 
         # Get item consumption for each consumer
+        item_scaled_consumption: list = []
         for i in range(self.environment_params["num_firms"]):
-            item_demand = choices[:, i].reshape(-1) # TODO: map choice to real quantity
+            item_demand = choices[:, i].reshape(-1) # In this case choice represents real number (unlike working_hours, etc.)
             item_available = self.items_quantities[i]
             item_scaled_consumption.append(availableGoods(item_available, item_demand))
         item_scaled_consumption = np.array(item_scaled_consumption).T # shape is (num_consumer, num_firms)
 
-        # calculate budget change for each consumer: + salary - taxes
-        # TODO: maybe create new state as a copy of current state and update budget in new state
+        # Sequnce of actions: salary, taxes, consumption
+        working_hours_choices: list = []
+        received_salaries: list = []
         payed_taxes: list = []
-        budgets_before_purchase: list = []
+        updated_budgets: list = []
         for i in range(self.environment_params["num_consumers"]):
-            consumer_payed_taxes = choices[i][-1]*self.consumers_wages[i]*self.tax_rate
-            consumer_received_salary = choices[i][-1]*self.consumers_wages[i]*(1-self.tax_rate)
-            payed_taxes.append(consumer_payed_taxes)
-            budgets_before_purchase.append(self.consumers_budgets[i] + consumer_received_salary)
-            
-        payed_taxes = np.array(payed_taxes) # shape is (num_consumers,)
-        budgets_before_purchase = np.array(budgets_before_purchase) # shape is (num_consumers,)
-        working_hours_choices = choices[:, -1].reshape(-1) # shape is (num_consumers,)
-
-        # calculate rewards and consumers' budgets after purchase
-        budgets_after_purchase: list = []
-        for i in range(self.environment_params["num_consumers"]):
+            # Map wh choice to actual number of wh
+            chosen_working_hours = self.possible_working_hours[choices[i][-1]]
+            # Calculate received salary
+            received_salary = chosen_working_hours*self.consumers_wages[i]*(1-self.tax_rate)
+            # Calculate payed taxes
+            payed_tax = chosen_working_hours*self.consumers_wages[i]*self.tax_rate
+            # Calculate new available budget (curr budget + salary)
+            available_budget = c_state.budget[i] + received_salary + self.distributed_tax
+            # Select items consumption for i-th user
             consumer_items_consumption = item_scaled_consumption[i, :].reshape(-1).tolist()
+            # Map user's wh to firm
             working_hours = [0]*self.environment_params["num_firms"]
-            self.consumers_working_hours[i] = choices[i][-1]
-            working_hours[consumer_to_firm[i]] = self.consumers_working_hours[i]
-            print(consumer_items_consumption)
-            print(self.items_prices)
-            print(budgets_before_purchase[i])
+            working_hours[consumer_to_firm[i]] = chosen_working_hours
             reward, budget_after_purchase = consumerUtility(consumer_items_consumption, self.items_prices,
                                                             working_hours, self.environment_params["labour_disutility"],
                                                             self.environment_params["crra_uf_param"],
-                                                            budgets_before_purchase[i])
+                                                            available_budget)
+            # Append all values needed for further timestamps and agents
             rewards.append(reward)
-            budgets_after_purchase.append(budget_after_purchase)
+            working_hours_choices.append(chosen_working_hours)
+            received_salaries.append(received_salary)
+            payed_taxes.append(payed_tax)
+            updated_budgets.append(budget_after_purchase)
         
         # Update env vars such as cosumers' budgets, items iventory etc.
-        
-        rewards = np.array(rewards) # shape is (num_consumers,)
-        budgets_after_purchase = np.array(budgets_after_purchase) # shape is (num_consumers,)
+        self.consumers_budgets = updated_budgets
+        self.consumers_working_hours = working_hours_choices
+        self.items_quantities = (np.array(self.items_quantities) -
+                                 np.sum(item_scaled_consumption, axis=0)).tolist()
 
-        return (item_scaled_consumption, working_hours_choices, budgets_after_purchase,
-                payed_taxes, rewards, log_probs)
+        # Cast some lists to np.ndarrays
+        rewards = np.array(rewards) # shape is (num_consumers,)
+
+        # Aggregate some variables among consumers
+        total_payed_taxes = np.sum(payed_taxes)
+        total_received_salaries = np.sum(received_salaries)
+        firm_item_scaled_consumption = np.sum(item_scaled_consumption, axis=0)
+
+        return rewards, log_probs, firm_item_scaled_consumption, total_received_salaries, total_payed_taxes
     
-    def simulateFirms(self, state: FirmState):
+    def simulateFirms(self, items_total_consumption: np.ndarray):
         choices: list = [] # shape is (num_firms, 2)
         log_probs: list = [] # shape is (num_firms, 2)
+        rewards: list = []
+
+        # Calculate labour available to each firm
+        total_labour_per_firm = [0] * self.environment_params["num_firms"] # add produced items
+        for i in range(self.environment_params["num_consumers"]):
+            firm_id = self.consumer_to_firm[i]
+            num_hours = self.consumers_working_hours[i]
+            total_labour_per_firm[firm_id] += num_hours
+
+        # Calculate reward for each firm, update their budgets and capital
+        payed_salaries: list = []
+        payed_taxes: list = []
+        updated_budgets: list = []
+        updated_capitals: list = []
+        produced_items: list = []
+        firms_investments: list = []
+        for i in range(self.environment_params["num_firms"]):
+            # Caclute reward (profit after taxes and payed taxes)
+            payed_salary = total_labour_per_firm[i]*self.firms_wages[i]
+            reward = items_total_consumption[i]*self.items_prices[i]*(1-self.tax_rate)-payed_salary
+            # Calculate payed taxes
+            payed_tax = items_total_consumption[i]*self.items_prices[i]*self.tax_rate
+            # Calculate new available budget
+            updated_budget = (self.firms_budgets[i]+reward)*(1-self.environment_params["investments_percent"])
+            # Calculate investments
+            investments = (self.firms_budgets[i]+reward)*self.environment_params["investments_percent"]
+            # Calculate new available capital
+            updated_capital = self.firms_capitals[i]+investments
+            # Calculate produced items
+            firm_produced_items = productionFunction(total_labour_per_firm[i], updated_capital, self.firms_pf_alphas[i])
+            # Append all values needed for further timestamps and agents
+            rewards.append(reward)
+            payed_salaries.append(payed_salary)
+            payed_taxes.append(payed_tax)
+            updated_budgets.append(updated_budget)
+            updated_capitals.append(updated_capital)
+            produced_items.append(firm_produced_items)
+            firms_investments.append(investments)
+
+        f_state = FirmState(
+            total_labour_per_firm,
+            updated_capitals,
+            self.firms_pf_alphas,
+            updated_budgets,
+            self.tax_rate,
+            firms_investments
+        )
 
         # get actions for each firm
+        items_new_prices: list = []
+        new_wages: list = []
         for i in range(self.environment_params["num_firms"]):
-            policy_input = state.getFirmState(i)
+            policy_input = f_state.getFirmState(i)
             policy_output = self.firm_policy.act(policy_input)
             choices.append(policy_output[::2])
             log_probs.append(policy_output[1::2])
-        
+            items_new_prices.append(self.possible_prices[choices[i][0]])
+            new_wages.append(self.possible_salaries[choices[i][1]])
         choices = np.array(choices)
 
-        price_choices = choices[:, 0]
-        wage_choices = choices[:, 1]
-
-        return price_choices, wage_choices, log_probs
+        # Update env vars such as wages (new items prices are set after government acts)
+        self.firms_budgets = updated_budgets
+        self.firms_capitals = updated_capitals
+        self.firms_wages = new_wages
+        self.items_quantities = (np.array(self.items_quantities) +
+                                 np.sum(produced_items, axis=0)).tolist()
         
-        # update item quantities
-        # update prices
-        # update wages
+        # Cast some lists to np.ndarrays
+        rewards = np.array(rewards)
 
-    def simulateGovernment(self, consumers_payed_taxes: List[float], firms_payed_taxes: List[float],
-                           items_quantities: List[float], items_prices: List[float],
-                           consumers_working_hours: List[int], firms_payed_wages: List[int],
-                           consumers_rewards: List[float], firms_rewards: List[float]):
+        # Aggregate some variables among firms
+        total_payed_taxes = np.sum(payed_taxes)
+        total_payed_salaries = np.sum(payed_salaries)
+
+
+        return rewards, log_probs, items_new_prices, total_payed_taxes, total_payed_salaries
+
+    def simulateGovernment(self, consumers_payed_taxes: float, firms_payed_taxes: float,
+                           firms_payed_wages: int, consumers_rewards: List[float],
+                           firms_rewards: List[float]):
         choices: list = [] # shape is (1,)
         log_probs: list = [] # shape is (1,)
         rewards: list = []
 
-        distributed_tax = ((np.sum(consumers_payed_taxes)+np.sum(firms_payed_taxes))/
-                           self.environment_params["num_consumers"])
+        self.distributed_tax = (consumers_payed_taxes+firms_payed_taxes)/self.environment_params["num_consumers"]
         g_state = GovernmentState(
             self.environment_params["num_consumers"],
             self.environment_params["num_firms"],
-            np.sum(consumers_working_hours),
-            np.sum(firms_payed_wages),
-            np.sum(consumers_payed_taxes)+np.sum(firms_payed_taxes),
-            items_quantities,
-            items_prices
+            np.sum(self.consumers_working_hours),
+            firms_payed_wages,
+            consumers_payed_taxes+firms_payed_taxes,
+            self.items_quantities,
+            self.items_prices
         )
-
-        choices = np.array(choices)
 
         policy_input = g_state.getGovernmentState()
         policy_output = self.government_policy.act(policy_input)
         choices.append(policy_output[0])
         log_probs.append(policy_output[1])
 
+        choices = np.array(choices)
+
         rewards.append(
             np.sum(consumers_rewards)/self.consumer_params["reward_scaling_factor"] +
             np.sum(firms_rewards)/self.firm_params["reward_scaling_factor"]
         )
+
+        # Update some env vars
+        self.tax_rate = self.possible_taxes[choices[0]]
+        
+        # Cast some lists to np.ndarrays
         rewards = np.array(rewards)
 
-        return choices, log_probs, rewards, distributed_tax
+        return rewards, log_probs
 
     def run(self) -> None:
         print("Init seeds for all random things")
         initSeeds(self.tech_params.get("seed", 666))
 
-        print("Initialize mapping dicts for possible salaries, prices etc.")
-        self.initMappingDicts()
-
         print("Start initializing policies")
         self.initPolicies()
-
-        print("Create inital states")
-
-        print("Set initial states for consumers, firms and government")
-        # code goes here
 
         print(f"Start training neural networks, number of epochs: {self.environment_params['epochs']}")
         for i in range(self.environment_params["epochs"]):
             # code goes here
+            print(f"Training epoch: {i+1}")
             print("Init variables for new epoch")
-            consumers_rewards: list = []
-            consumers_log_probs: list = []
-            firms_rewards = []
-            firms_log_probs = []
+            consumers_rewards_list: list = []
+            consumers_log_probs_list: list = []
+            firms_rewards_list: list = []
+            firms_log_probs_list: list = []
+            government_rewards_list: list = []
+            government_log_probs_list: list = []
+
+            print("Initialize mapping dicts for possible salaries, prices etc. for new epoch")
+            self.initMappingDicts()
 
             for t in range(self.environment_params["timesteps"]):
                 if t == 0:
-                    # initial simulation:
-                    # create consumers state
-                    # simulate consumers
-                    # create firms state
-                    # simulate firm policy
-                    # create government policy
-                    # simulate government policy
-                    c_state = ConsumerState.initialState(
-                        self.environment_params["num_firms"],
-                        self.environment_params["num_consumers"]
-                    )
-                    (item_scaled_consumption, working_hours_choices,
-                     budgets_after_purchase, consumers_payed_taxes,
-                     consumers_rewards, consumers_log_probs) = self.simulateConsumers(
-                        c_state,
-                        self.consumer_to_firm
-                    )
+                    # Simulate consumers
+                    (consumers_rewards, consumers_log_probs,
+                     item_scaled_consumption,
+                     consumers_received_salaries,
+                     consumers_payed_taxes) = self.simulateConsumers(self.consumer_to_firm)
+                    consumers_rewards_list.append(consumers_rewards)
+                    consumers_log_probs_list.append(consumers_log_probs)
 
-                    # maybe make it a separate method or move into simulateFirms
-                    total_goods_sales = []
-                    firms_payed_taxes = []
-                    for sales, price in zip(np.sum(item_scaled_consumption, axis=0), [0]*self.environment_params["num_firms"]):
-                        total_goods_sales.append(sales*price*(1.0-0.0)) # these are actually firms' rewards
-                        firms_payed_taxes.append(sales*price*0.0) 
-                    total_goods_sales = np.array(total_goods_sales)
-                    total_labour_per_firm = [0] * self.environment_params["num_firms"] # add produced items
-                    for i in range(self.environment_params["num_consumers"]):
-                        firm_id = self.consumer_to_firm[i]
-                        num_hours = self.possible_working_hours[working_hours_choices[i]]
-                        total_labour_per_firm[firm_id] += num_hours
-                    total_salaries_payed = []
-                    for i in range(self.environment_params["num_firms"]):
-                        total_salaries_payed.append(total_labour_per_firm[i]*0)
-                    initial_budgets = []
-                    initial_investments = []
-                    for i in range(self.environment_params["num_firms"]):
-                        initial_budgets.append(
-                            (2200000 + total_goods_sales[i])*(1-self.environment_params["investments_percent"]) - total_salaries_payed[i]
-                        )
-                        initial_investments.append((2200000 + total_goods_sales[i])*self.environment_params["investments_percent"])
-                    firms_capitals = [
-                        cfg.FIRMS_INITIAL_STATES[i]["capital"] + (2200000 + total_goods_sales[i])*self.environment_params["investments_percent"]
-                        for i in range(self.environment_params["num_firms"])
-                    ]
-                    firms_pf_alphas = [
-                        cfg.FIRMS_INITIAL_STATES[i]["pf_alpha"] for i in range(self.environment_params["num_firms"])
-                    ]
-                    f_state = FirmState(
-                        total_labour_per_firm,
-                        firms_capitals,
-                        firms_pf_alphas,
-                        initial_budgets,
-                        [0.0]*self.environment_params["num_firms"],
-                        initial_investments
-                    )
-                    prices_choices, wages_choices, firms_log_probs = self.simulateFirms(f_state)
+                    # Simulate firms
+                    (firms_rewards, firms_log_probs,
+                     new_items_prices, firms_payed_taxes,
+                     firms_payed_salaries) = self.simulateFirms(item_scaled_consumption)
+                    firms_rewards_list.append(firms_rewards)
+                    firms_log_probs_list.append(firms_log_probs)
 
-                    tax_choice, government_log_prob, government_reward, distributed_tax = self.simulateGovernment()
+                    # Simulate government
+                    government_reward, government_log_prob = self.simulateGovernment(
+                        consumers_payed_taxes, firms_payed_taxes,
+                        firms_payed_salaries, consumers_rewards,
+                        firms_rewards
+                    )
+                    government_rewards_list.append(government_reward)
+                    government_log_probs_list.append(government_log_prob)
                 break
-
             
+            # REINFORCE algorithm goes here
 
-            # c_state = ConsumerState(
-            #     curr_tax=[0.0]*self.environment_params["num_consumers"],
-            #     item_prices=[[1000]*self.environment_params["num_firms"]]*self.environment_params["num_consumers"],
-            #     item_quantities=[[0]*self.environment_params["num_firms"]]*self.environment_params["num_consumers"],
-            #     wage=[0]*self.environment_params["num_consumers"],
-            #     working_hours=[0]*self.environment_params["num_consumers"],
-            #     labour_disutility=[self.environment_params["labour_disutility"]]*self.environment_params["num_consumers"],
-            #     crra_uf_param=[self.environment_params["crra_uf_param"]]*self.environment_params["num_consumers"],
-            #     budget=[0.0]*self.environment_params["num_consumers"]
-            # )
-            # # print(c_state.getConsumerState(j).shape)
-            # for j in range(self.environment_params["num_consumers"]):
-            #     action = self.consumer_policy.act(c_state.getConsumerState(j))
-            #     action_items = action[::2]
-            #     action_probs = action[1::2]
-            #     print(action_items)
-            #     print(action_probs)
-            #     break
+            print(consumers_log_probs_list[0])
+            # print(consumers_log_probs_list[0][0][0]*consumers_log_probs_list[0][0][1])
+            # print(consumers_log_probs_list)
+            # print(firms_rewards_list)
+            # print(government_rewards_list)
 
 
 if __name__ == "__main__":
