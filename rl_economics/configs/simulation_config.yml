@@ -9,7 +9,7 @@ environment:
   investments_percent: 0.1
   discount_factor: 0.75
   timesteps: 15
-  epochs: 15
+  epochs: 50
   inital:
     firm_budget: 22000000
     items_q: 0
