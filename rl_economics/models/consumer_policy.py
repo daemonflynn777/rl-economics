@@ -42,6 +42,7 @@ class ConsumerPolicy(BasePolicy):
         self.head_indices.append((8*num_items, 8*num_items + num_working_hours))
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # print(x)
         x = self.mlp(x)
 
         x_0 = self.item_head_0(x)
@@ -64,6 +65,7 @@ class ConsumerPolicy(BasePolicy):
     def act(self, state: np.ndarray):
         state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
         probs = self.forward(state).cpu()
+        # print(probs)
         m_0 = Categorical(probs[0, self.head_indices[0][0]:self.head_indices[0][1]])
         m_1 = Categorical(probs[0, self.head_indices[1][0]:self.head_indices[1][1]])
         m_2 = Categorical(probs[0, self.head_indices[2][0]:self.head_indices[2][1]])

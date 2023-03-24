@@ -23,11 +23,16 @@ def availableGoods(available_quantity: int,
                    desired_quantity: np.ndarray) -> np.array:
     scaling_coeff = min(available_quantity / (desired_quantity.sum() + cfg.EPS), 1.0)
 
-    return desired_quantity * scaling_coeff
+    if scaling_coeff == 1.0:
+        overdemand = 0
+    else:
+        overdemand = 1
+
+    return desired_quantity * scaling_coeff, overdemand
 
 
 def productionFunction(labour: float, capital: float, alpha: float) -> float:
-    return 100*(capital**(1-alpha))*(labour**alpha)
+    return (capital**(1-alpha))*(labour**alpha)
 
 
 def calcDiscountedReturns(rewards: List[float], gamma: float) -> List[float]:
@@ -36,7 +41,7 @@ def calcDiscountedReturns(rewards: List[float], gamma: float) -> List[float]:
         disc_return_t = (returns[0] if len(returns)>0 else 0)
         returns.insert(0, gamma*disc_return_t + rewards[t]) # append values from the left
     returns = np.array(returns)
-    #returns = (returns - returns.mean()) / (returns.std() + cfg.EPS)
+    # returns = (returns - returns.mean()) / (returns.std() + cfg.EPS)
     return returns
 
 
@@ -44,7 +49,7 @@ def calcLoss(discounted_returns: List[float], log_probs: List[torch.Tensor]) -> 
     loss = discounted_returns[0]*log_probs[0]*(-1)
     for i in range(1, len(discounted_returns)):
         loss += discounted_returns[i]*log_probs[i]*(-1)
-    return loss/len(discounted_returns)
+    return loss
 
 def calcAgentsMeanLoss(rewards: List[float], log_probs: List[torch.Tensor],
                        gamma: float) -> Tuple[torch.Tensor, float]:
@@ -56,7 +61,7 @@ def calcAgentsMeanLoss(rewards: List[float], log_probs: List[torch.Tensor],
         agent_returns = calcDiscountedReturns(rewards[i], gamma)
         agent_loss = calcLoss(agent_returns, log_probs[i])
         losses.append(agent_loss)
-        returns.append(agent_returns[-1])
+        returns.append(agent_returns[0])
 
     mean_loss = losses[0]
     for i in range(1, len(losses)):

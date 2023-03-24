@@ -27,6 +27,7 @@ class GovernmentPolicy(BasePolicy):
         self.tax_head = nn.Linear(mlp_layer_width, num_taxes)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # print(x)
         x = self.mlp(x)
 
         x_tax = self.tax_head(x)
@@ -35,6 +36,7 @@ class GovernmentPolicy(BasePolicy):
     def act(self, state: np.ndarray):
         state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
         probs = self.forward(state).cpu()
+
         m_tax = Categorical(probs)
 
         action_tax = m_tax.sample()

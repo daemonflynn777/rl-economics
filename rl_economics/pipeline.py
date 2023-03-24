@@ -79,16 +79,25 @@ class Pipeline:
         )
 
         # Consumers' variables
-        self.consumers_budgets = [0.0]*self.environment_params["num_consumers"]
+        self.consumers_budgets = [
+            self.environment_params["initial"]["consumer_budget"]
+        ]*self.environment_params["num_consumers"]
         self.consumers_working_hours = [0]*self.environment_params["num_consumers"]
         self.consumers_wages = [0]*self.environment_params["num_consumers"]
 
         # Firms' variables
-        self.items_quantities = [0.0]*self.environment_params["num_firms"]
-        self.items_prices = [0]*self.environment_params["num_firms"]
+        self.items_quantities = [
+            self.environment_params["initial"]["items_q"]
+        ]*self.environment_params["num_firms"]
+        self.items_prices = [
+            self.environment_params["initial"]["items_p"]
+        ]*self.environment_params["num_firms"]
+        self.items_overdemand = [0]*self.environment_params["num_firms"]
         self.firms_total_labour = [0]*self.environment_params["num_firms"]
         self.firms_wages = [0]*self.environment_params["num_firms"]
-        self.firms_budgets = [22000000]*self.environment_params["num_firms"]
+        self.firms_budgets = [
+            self.environment_params["initial"]["firm_budget"]
+        ]*self.environment_params["num_firms"]
         self.firms_capitals = [cfg.FIRMS_INITIAL_STATES[i]["capital"] for i in range(self.environment_params["num_firms"])]
         self.firms_pf_alphas = [cfg.FIRMS_INITIAL_STATES[i]["pf_alpha"] for i in range(self.environment_params["num_firms"])]
 
@@ -102,8 +111,8 @@ class Pipeline:
         num_working_hours = ((self.consumer_params["model"]["working_hours"]["max"] -
                               self.consumer_params["model"]["working_hours"]["min"]) //
                              self.consumer_params["model"]["working_hours"]["step"] + 1)
-        consumer_num_unput_features = (len(ConsumerState.__dict__["__match_args__"]) - 2 +
-                                       2*self.environment_params["num_firms"] +
+        consumer_num_unput_features = (len(ConsumerState.__dict__["__match_args__"]) - 3 +
+                                       3*self.environment_params["num_firms"] +
                                        self.environment_params["num_consumers"])
         self.consumer_policy = ConsumerPolicy(
             num_input_features=consumer_num_unput_features,
@@ -121,8 +130,8 @@ class Pipeline:
         num_wages = ((self.firm_params["model"]["wages"]["max"] -
                       self.firm_params["model"]["wages"]["min"]) //
                      self.firm_params["model"]["wages"]["step"] + 1)
-        firm_num_unput_features = (len(FirmState.__dict__["__match_args__"]) +
-                                       self.environment_params["num_firms"])
+        firm_num_unput_features = (len(FirmState.__dict__["__match_args__"]) - 3 +
+                                       4*self.environment_params["num_firms"])
         self.firm_policy = FirmPolicy(
             num_input_features=firm_num_unput_features,
             num_prices=num_prices,
@@ -168,6 +177,7 @@ class Pipeline:
             self.tax_rate,
             self.items_prices,
             self.items_quantities,
+            self.items_overdemand,
             self.consumers_wages,
             self.environment_params["labour_disutility"],
             self.environment_params["crra_uf_param"],
@@ -187,10 +197,13 @@ class Pipeline:
 
         # Get item consumption for each consumer
         item_scaled_consumption: list = []
+        items_overdemand: list = []
         for i in range(self.environment_params["num_firms"]):
             item_demand = choices[:, i].reshape(-1) # In this case choice represents real number (unlike working_hours, etc.)
             item_available = self.items_quantities[i]
-            item_scaled_consumption.append(availableGoods(item_available, item_demand))
+            i_s_consumption, item_overdemand = availableGoods(item_available, item_demand)
+            item_scaled_consumption.append(i_s_consumption)
+            items_overdemand.append(item_overdemand)
         item_scaled_consumption = np.array(item_scaled_consumption).T # shape is (num_consumer, num_firms)
 
         # Sequnce of actions: salary, taxes, consumption
@@ -207,7 +220,7 @@ class Pipeline:
             # Calculate payed taxes
             payed_tax = chosen_working_hours*self.consumers_wages[i]*self.tax_rate
             # Calculate new available budget (curr budget + salary)
-            available_budget = c_state.budget[i] + received_salary #+ self.distributed_tax
+            available_budget = c_state.budget[i] + received_salary # + self.distributed_tax
             # Select items consumption for i-th user
             consumer_items_consumption = item_scaled_consumption[i, :].reshape(-1).tolist()
             # Map user's wh to firm
@@ -231,12 +244,14 @@ class Pipeline:
         # Cast some lists to np.ndarrays
         rewards = np.array(rewards) # shape is (num_consumers,)
         real_consumed_items = np.array(real_consumed_items)
-        
+        # print(real_consumed_items)
+
         # Update env vars such as cosumers' budgets, items iventory etc.
         self.consumers_budgets = updated_budgets
         self.consumers_working_hours = working_hours_choices
         self.items_quantities = (np.array(self.items_quantities) -
                                  np.sum(real_consumed_items, axis=0)).tolist()
+        self.items_overdemand = items_overdemand
 
         # Aggregate some variables among consumers
         total_payed_taxes = np.sum(payed_taxes)
@@ -268,19 +283,19 @@ class Pipeline:
         for i in range(self.environment_params["num_firms"]):
             # Caclute reward (profit after taxes and payed taxes)
             payed_salary = total_labour_per_firm[i]*self.firms_wages[i]
-            reward = items_total_consumption[i]*self.items_prices[i]*(1-self.tax_rate)-payed_salary
+            reward = items_total_consumption[i]*self.items_prices[i]-payed_salary
             # Calculate payed taxes
             payed_tax = items_total_consumption[i]*self.items_prices[i]*self.tax_rate
             # Calculate new available budget
-            updated_budget = (self.firms_budgets[i]+reward)*(1-self.environment_params["investments_percent"])
+            updated_budget = (self.firms_budgets[i]+reward-payed_tax)*(1-self.environment_params["investments_percent"])
             # Calculate investments
-            investments = (self.firms_budgets[i]+reward)*self.environment_params["investments_percent"]
+            investments = (self.firms_budgets[i]+reward-payed_tax)*self.environment_params["investments_percent"]
             # Calculate new available capital
             updated_capital = self.firms_capitals[i]+investments
             # Calculate produced items
             firm_produced_items = productionFunction(total_labour_per_firm[i], updated_capital, self.firms_pf_alphas[i])
             # Append all values needed for further timestamps and agents
-            rewards.append(reward) #/self.firm_params["reward_scaling_factor"])
+            rewards.append(max(reward, 0.0)) #/self.firm_params["reward_scaling_factor"])
             payed_salaries.append(payed_salary)
             payed_taxes.append(payed_tax)
             updated_budgets.append(updated_budget)
@@ -294,7 +309,10 @@ class Pipeline:
             self.firms_pf_alphas,
             updated_budgets,
             self.tax_rate,
-            firms_investments
+            firms_investments,
+            self.items_prices,
+            (np.array(self.items_quantities) + np.sum(produced_items, axis=0)).tolist(),
+            self.items_overdemand
         )
 
         # get actions for each firm
@@ -371,7 +389,8 @@ class Pipeline:
                   firms_rewards: List[List[float]],
                   firms_log_probs: List[List[torch.Tensor]],
                   government_rewards: List[List[float]],
-                  government_log_probs: List[List[torch.Tensor]],) -> None:
+                  government_log_probs: List[List[torch.Tensor]],
+                  epoch_num: int) -> None:
         consumers_mean_loss, cosumers_mean_return = calcAgentsMeanLoss(
             consumers_rewards, consumers_log_probs, self.environment_params["discount_factor"]
         )
@@ -381,6 +400,7 @@ class Pipeline:
         government_mean_loss, government_mean_return = calcAgentsMeanLoss(
             government_rewards, government_log_probs, self.environment_params["discount_factor"]
         )
+        print(epoch_num)
         print(f"Consumers' loss: {round(consumers_mean_loss.item(), 5)}, "
               f"firms' loss: {round(firms_mean_loss.item(), 5)}, "
               f"government loss: {round(government_mean_loss.item(), 5)}")
@@ -393,13 +413,15 @@ class Pipeline:
         consumers_mean_loss.backward()
         self.consumer_optimizer.step()
 
-        self.firm_optimizer.zero_grad()
-        firms_mean_loss.backward()
-        self.firm_optimizer.step()
+        if epoch_num > self.environment_params["epochs_firms"]:
+            self.firm_optimizer.zero_grad()
+            firms_mean_loss.backward()
+            self.firm_optimizer.step()
 
-        self.government_optimizer.zero_grad()
-        government_mean_loss.backward()
-        self.government_optimizer.step()
+        if epoch_num > self.environment_params["epochs_government"]:
+            self.government_optimizer.zero_grad()
+            government_mean_loss.backward()
+            self.government_optimizer.step()
 
     def run(self) -> None:
         print("Init seeds for all random things")
@@ -410,6 +432,11 @@ class Pipeline:
 
         print("Init optimizers")
         self.initOptimizers()
+
+        epochs_avg_prices: list = []
+        epochs_avg_wages: list = []
+        epochs_avg_consumers_returns: list = []
+        epochs_avg_firms_returns: list = []
 
         print(f"Start training neural networks, number of epochs: {self.environment_params['epochs']}")
         for i in range(self.environment_params["epochs"]):
@@ -455,12 +482,12 @@ class Pipeline:
 
                 print(self.items_prices)
                 print(self.consumers_working_hours)
-                # print(self.consumers_wages)
-                # print(self.consumers_budgets)
-                # print(self.items_quantities)
-                # print(self.tax_rate)
-                # # print(self.possible_salaries)
-                # print()
+                print(self.consumers_wages)
+                print(self.consumers_budgets)
+                print(self.items_quantities)
+                print(self.tax_rate)
+                # print(self.possible_salaries)
+                print()
 
             print(
                 np.mean(
@@ -495,13 +522,17 @@ class Pipeline:
             self.reinforce(
                 consumers_rewards_list, consumers_log_probs_list,
                 firms_rewards_list, firms_log_probs_list,
-                government_rewards_list, government_log_probs_list
+                government_rewards_list, government_log_probs_list,
+                i
             )
 
             # print(consumers_log_probs_list[0][0][0]*consumers_log_probs_list[0][0][1])
             # print(consumers_log_probs_list)
             # print(firms_rewards_list)
             # print(government_rewards_list)
+        # print(self.items_prices)
+        # print(self.consumers_wages)
+        # print(self.consumers_working_hours)
 
 
 if __name__ == "__main__":

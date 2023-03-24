@@ -36,6 +36,7 @@ class FirmPolicy(BasePolicy):
         print(self.head_indices)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # print(x)
         x = self.mlp(x)
 
         x_price = self.price_head(x)
@@ -45,6 +46,7 @@ class FirmPolicy(BasePolicy):
     def act(self, state: np.ndarray):
         state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
         probs = self.forward(state).cpu()
+        # print(probs)
         m_price = Categorical(probs[0, self.head_indices[0][0]:self.head_indices[0][1]])
         m_wage = Categorical(probs[0, self.head_indices[1][0]:self.head_indices[1][1]])
 
@@ -53,3 +55,15 @@ class FirmPolicy(BasePolicy):
         composite_prob = torch.exp(m_price.log_prob(action_price))*torch.exp(m_wage.log_prob(action_wage))
         log_composite_prob = torch.log(composite_prob)
         return [action_price.item(), action_wage.item(), log_composite_prob]
+
+        # action_price = torch.argmax(probs[0, self.head_indices[0][0]:self.head_indices[0][1]]).item()
+        # prob_price = probs[0, action_price]
+
+        # action_wage = torch.argmax(probs[0, self.head_indices[1][0]:self.head_indices[1][1]]).item()
+        # prob_wage = probs[0, action_wage]
+
+        # print(probs)
+
+        # composite_prob = prob_price*prob_wage
+        # log_composite_prob = torch.log(composite_prob)
+        # return [action_price, action_wage, log_composite_prob]

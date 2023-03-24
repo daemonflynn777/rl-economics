@@ -10,6 +10,7 @@ class ConsumerState:
     curr_tax: float
     item_prices: List[int]
     item_quantities: List[int]
+    item_overdemand: List[int]
     wage: List[int]
     labour_disutility: float
     crra_uf_param: float
@@ -60,13 +61,23 @@ class ConsumerState:
         consumer_number[consumer_id] = 1
 
         state.append(self.curr_tax)
-        state.append(self.wage[consumer_id])
+        state.append(self.wage[consumer_id]/1e1)
         state.append(self.labour_disutility)
         state.append(self.crra_uf_param)
-        state.append(self.budget[consumer_id])
-        state.extend(self.item_prices)
-        state.extend(self.item_quantities)
+        state.append(self.budget[consumer_id]/1e5)
+        state.extend((np.array(self.item_prices)/2.5e3).tolist())
+        state.extend((np.array(self.item_quantities)/5e7).tolist())
+        state.extend(self.item_overdemand)
         state.extend(consumer_number)
+        # state.append(self.curr_tax)
+        # state.append(self.wage[consumer_id])
+        # state.append(self.labour_disutility)
+        # state.append(self.crra_uf_param)
+        # state.append(self.budget[consumer_id])
+        # state.extend(self.item_prices)
+        # state.extend(self.item_quantities)
+        # state.extend(self.item_overdemand)
+        # state.extend(consumer_number)
 
         return np.array(state)
         
@@ -79,6 +90,9 @@ class FirmState:
     budget: List[float]
     curr_tax: float
     investments: List[float]
+    item_prices: List[int]
+    item_quantities: List[int]
+    item_overdemand: List[int]
 
     def updateState(self,
                     total_labour: List[int],
@@ -101,13 +115,26 @@ class FirmState:
         firm_number = [0]*len(self.total_labour)
         firm_number[firm_id] = 1
 
-        state.append(self.total_labour[firm_id])
-        state.append(self.capital[firm_id])
+        state.append(self.total_labour[firm_id]/7e3)
+        state.append(self.capital[firm_id]/1e7)
         state.append(self.pf_alphas[firm_id])
-        state.append(self.budget[firm_id])
+        state.append(self.budget[firm_id]/2e7)
         state.append(self.curr_tax)
-        state.append(self.investments[firm_id])
+        state.append(self.investments[firm_id]/1e6)
+        state.extend((np.array(self.item_prices)/2.5e3).tolist())
+        state.extend((np.array(self.item_quantities)/5e7).tolist())
+        state.extend(self.item_overdemand)
         state.extend(firm_number)
+        # state.append(self.total_labour[firm_id])
+        # state.append(self.capital[firm_id])
+        # state.append(self.pf_alphas[firm_id])
+        # state.append(self.budget[firm_id])
+        # state.append(self.curr_tax)
+        # state.append(self.investments[firm_id])
+        # state.extend(self.item_prices)
+        # state.extend(self.item_quantities)
+        # state.extend(self.item_overdemand)
+        # state.extend(firm_number)
 
         return np.array(state)
 
@@ -143,13 +170,20 @@ class GovernmentState:
     def getGovernmentState(self) -> np.ndarray:
         state = []
 
-        state.append(self.number_of_consumers)
-        state.append(self.number_of_firms)
-        state.append(self.total_hours_worked)
-        state.append(self.total_wage_payed)
-        state.append(self.total_tax_payed)
-        state.extend(self.item_prices)
-        state.extend(self.item_quantities)
+        state.append(self.number_of_consumers/5e1)
+        state.append(self.number_of_firms/8)
+        state.append(self.total_hours_worked/3e4)
+        state.append(self.total_wage_payed/6e5)
+        state.append(self.total_tax_payed/1e5)
+        state.extend((np.array(self.item_prices)/2.5e3).tolist())
+        state.extend((np.array(self.item_quantities)/5e7).tolist())
+        # state.append(self.number_of_consumers)
+        # state.append(self.number_of_firms)
+        # state.append(self.total_hours_worked)
+        # state.append(self.total_wage_payed)
+        # state.append(self.total_tax_payed)
+        # state.extend(self.item_prices)
+        # state.extend(self.item_quantities)
 
         return np.array(state)
     
