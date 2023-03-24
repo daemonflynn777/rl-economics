@@ -32,3 +32,5 @@ FIRMS_INITIAL_STATES = {
         "pf_alpha": 0.8
     }
 }
+
+EPS = 1e-8

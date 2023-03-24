@@ -33,12 +33,13 @@ class FirmPolicy(BasePolicy):
             (0, num_prices),
             (num_prices, num_prices+num_wages)
         ]
+        print(self.head_indices)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.mlp(x)
 
         x_price = self.price_head(x)
-        x_wage = self.price_head(x)
+        x_wage = self.wage_head(x)
         return torch.cat((F.softmax(x_price, dim=1), F.softmax(x_wage, dim=1),), dim=1)
     
     def act(self, state: np.ndarray):
@@ -49,7 +50,6 @@ class FirmPolicy(BasePolicy):
 
         action_price = m_price.sample()
         action_wage = m_wage.sample()
-        return [
-            action_price.item(), m_price.log_prob(action_price),
-            action_wage.item(), m_wage.log_prob(action_wage),
-        ]
+        composite_prob = torch.exp(m_price.log_prob(action_price))*torch.exp(m_wage.log_prob(action_wage))
+        log_composite_prob = torch.log(composite_prob)
+        return [action_price.item(), action_wage.item(), log_composite_prob]

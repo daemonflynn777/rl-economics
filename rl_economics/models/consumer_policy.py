@@ -89,6 +89,7 @@ class ConsumerPolicy(BasePolicy):
             torch.exp(m_6.log_prob(action_6)) * torch.exp(m_7.log_prob(action_7)) * torch.exp(m_hours.log_prob(action_hours))
         )
         log_composite_prob = torch.log(composite_prob)
+        # print(log_composite_prob)
         return [
             action_0.item(), action_1.item(), action_2.item(), action_3.item(), action_4.item(),
             action_5.item(), action_6.item(), action_7.item(), action_hours.item(), log_composite_prob

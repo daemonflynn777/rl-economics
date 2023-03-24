@@ -2,27 +2,27 @@ tech:
   device: "cpu"
   seed: 228
 environment:
-  num_consumers: 15
+  num_consumers: 48
   num_firms: 8
   labour_disutility: 0.01
   crra_uf_param: 0.1
   investments_percent: 0.1
-  discount_factor: 0.9
-  timesteps: 10
-  epochs: 1
+  discount_factor: 0.75
+  timesteps: 15
+  epochs: 15
   inital:
-    firm_budget: 2200000
+    firm_budget: 22000000
     items_q: 0
     items_p: 0
     taxes: 0.0
 consumer:
   model:
     mlp_layer_width: 128
-    num_items: 11
+    num_items: 6
     working_hours:
       min: 0
-      max: 1040
-      step: 260
+      max: 520
+      step: 130
   optimizer:
     lr: 0.001
   reward_scaling_factor: 5
@@ -31,8 +31,8 @@ firm:
     mlp_layer_width: 128
     prices:
       min: 0
-      max: 2500
-      step: 500
+      max: 1000
+      step: 200
     wages:
       min: 0
       max: 44
