@@ -462,8 +462,19 @@ class Pipeline:
                 # # print(self.possible_salaries)
                 # print()
 
-            print(consumers_rewards_list)
-            print(firms_rewards_list)
+            print(
+                np.mean(
+                    consumers_rewards_list[-1],
+                    axis=0
+                )
+            )
+            print(
+                np.mean(
+                    firms_rewards_list[-1],
+                    axis=0
+                )
+            )
+            # print(firms_rewards_list)
             # print(self.consumer_policy.working_hours_head.weight)
             # Trim firms' and government's lists, because their actions imply on t+1
             firms_rewards_list = firms_rewards_list[1:]
