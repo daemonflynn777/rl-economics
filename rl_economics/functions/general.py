@@ -49,10 +49,10 @@ def calcLoss(discounted_returns: List[float], log_probs: List[torch.Tensor]) -> 
     loss = discounted_returns[0]*log_probs[0]*(-1)
     for i in range(1, len(discounted_returns)):
         loss += discounted_returns[i]*log_probs[i]*(-1)
-    return loss
+    return loss/len(discounted_returns)
 
 def calcAgentsMeanLoss(rewards: List[float], log_probs: List[torch.Tensor],
-                       gamma: float) -> Tuple[torch.Tensor, float]:
+                       gamma: float, reward_scaling: float = 1.0) -> Tuple[torch.Tensor, float]:
     assert len(rewards) == len(log_probs), "rewards and log_probs lists are not equal length"
     losses = []
     returns = []
@@ -60,8 +60,9 @@ def calcAgentsMeanLoss(rewards: List[float], log_probs: List[torch.Tensor],
     for i in range(len(rewards)):
         agent_returns = calcDiscountedReturns(rewards[i], gamma)
         agent_loss = calcLoss(agent_returns, log_probs[i])
-        losses.append(agent_loss)
-        returns.append(agent_returns[0])
+        losses.append(agent_loss/reward_scaling)
+        # returns.append(agent_returns[0])
+        returns.append(np.mean(agent_returns))
 
     mean_loss = losses[0]
     for i in range(1, len(losses)):

@@ -6,6 +6,7 @@ from typing import List
 import numpy as np
 
 from rl_economics.utils.misc import loadYamlConfig, initSeeds, transposeList2d
+from rl_economics.functions.visualization import plotLine2d
 from rl_economics.functions.general import (
     consumersToFirmsDistribution,
     availableGoods,
@@ -296,6 +297,7 @@ class Pipeline:
             firm_produced_items = productionFunction(total_labour_per_firm[i], updated_capital, self.firms_pf_alphas[i])
             # Append all values needed for further timestamps and agents
             rewards.append(max(reward, 0.0)) #/self.firm_params["reward_scaling_factor"])
+            # rewards.append(reward)
             payed_salaries.append(payed_salary)
             payed_taxes.append(payed_tax)
             updated_budgets.append(updated_budget)
@@ -373,7 +375,10 @@ class Pipeline:
 
         choices = np.array(choices)
 
-        rewards.append((np.sum(consumers_rewards) + np.sum(firms_rewards))) #/self.government_params["reward_scaling_factor"])
+        rewards.append(
+            (np.sum(consumers_rewards)/self.consumer_params["reward_scaling_factor"] +
+             np.sum(firms_rewards)/self.firm_params["reward_scaling_factor"])
+        ) #/self.government_params["reward_scaling_factor"])
 
         # Update some env vars
         self.tax_rate = self.possible_taxes[choices[0]]
@@ -392,13 +397,16 @@ class Pipeline:
                   government_log_probs: List[List[torch.Tensor]],
                   epoch_num: int) -> None:
         consumers_mean_loss, cosumers_mean_return = calcAgentsMeanLoss(
-            consumers_rewards, consumers_log_probs, self.environment_params["discount_factor"]
+            consumers_rewards, consumers_log_probs, self.environment_params["discount_factor"],
+            self.consumer_params["reward_scaling_factor"]
         )
         firms_mean_loss, firms_mean_return = calcAgentsMeanLoss(
-            firms_rewards, firms_log_probs, self.environment_params["discount_factor"]
+            firms_rewards, firms_log_probs, self.environment_params["discount_factor"],
+            self.firm_params["reward_scaling_factor"]
         )
         government_mean_loss, government_mean_return = calcAgentsMeanLoss(
-            government_rewards, government_log_probs, self.environment_params["discount_factor"]
+            government_rewards, government_log_probs, self.environment_params["discount_factor"],
+            self.government_params["reward_scaling_factor"]
         )
         print(epoch_num)
         print(f"Consumers' loss: {round(consumers_mean_loss.item(), 5)}, "
@@ -422,6 +430,8 @@ class Pipeline:
             self.government_optimizer.zero_grad()
             government_mean_loss.backward()
             self.government_optimizer.step()
+        
+        return cosumers_mean_return, firms_mean_return
 
     def run(self) -> None:
         print("Init seeds for all random things")
@@ -433,10 +443,11 @@ class Pipeline:
         print("Init optimizers")
         self.initOptimizers()
 
-        epochs_avg_prices: list = []
-        epochs_avg_wages: list = []
-        epochs_avg_consumers_returns: list = []
-        epochs_avg_firms_returns: list = []
+        avg_prices_list: list = []
+        avg_wages_list: list = []
+        awg_working_hours_list: list = []
+        consumers_avg_returns_list: list = []
+        firms_avg_returns_list: list = []
 
         print(f"Start training neural networks, number of epochs: {self.environment_params['epochs']}")
         for i in range(self.environment_params["epochs"]):
@@ -448,6 +459,10 @@ class Pipeline:
             firms_log_probs_list: list = []
             government_rewards_list: list = []
             government_log_probs_list: list = []
+
+            avg_prices: list = []
+            avg_wages: list = []
+            awg_working_hours: list = []
 
             # print("Initialize mapping dicts for possible salaries, prices etc. for new epoch")
             self.initMappingDicts()
@@ -477,17 +492,25 @@ class Pipeline:
                 government_rewards_list.append(government_reward)
                 government_log_probs_list.append(government_log_prob)
 
+                avg_prices.append(np.mean(self.items_prices))
+                avg_wages.append(np.mean(self.firms_wages))
+                awg_working_hours.append(np.mean(self.consumers_working_hours))
+
                 # Update env var
                 self.items_prices = new_items_prices
 
-                print(self.items_prices)
-                print(self.consumers_working_hours)
-                print(self.consumers_wages)
-                print(self.consumers_budgets)
-                print(self.items_quantities)
-                print(self.tax_rate)
+                # print(self.items_prices)
+                # print(self.consumers_working_hours)
+                # print(self.consumers_wages)
+                # print(self.consumers_budgets)
+                # print(self.items_quantities)
+                # print(self.tax_rate)
                 # print(self.possible_salaries)
-                print()
+                # print()
+            
+            avg_prices_list.append(np.mean(avg_prices))
+            avg_wages_list.append(np.mean(avg_wages))
+            awg_working_hours_list.append(np.mean(awg_working_hours))
 
             print(
                 np.mean(
@@ -501,7 +524,7 @@ class Pipeline:
                     axis=0
                 )
             )
-            # print(firms_rewards_list)
+            print(firms_rewards_list)
             # print(self.consumer_policy.working_hours_head.weight)
             # Trim firms' and government's lists, because their actions imply on t+1
             firms_rewards_list = firms_rewards_list[1:]
@@ -519,20 +542,55 @@ class Pipeline:
             government_log_probs_list = transposeList2d(government_log_probs_list)
 
             # REINFORCE algorithm goes here
-            self.reinforce(
+            consumers_avg_returns, firms_avg_returns = self.reinforce(
                 consumers_rewards_list, consumers_log_probs_list,
                 firms_rewards_list, firms_log_probs_list,
                 government_rewards_list, government_log_probs_list,
                 i
             )
 
+            consumers_avg_returns_list.append(consumers_avg_returns)
+            firms_avg_returns_list.append(firms_avg_returns)
+
             # print(consumers_log_probs_list[0][0][0]*consumers_log_probs_list[0][0][1])
             # print(consumers_log_probs_list)
             # print(firms_rewards_list)
             # print(government_rewards_list)
+        # print(consumers_avg_returns_list)
+        # print(firms_avg_returns_list)
         # print(self.items_prices)
         # print(self.consumers_wages)
         # print(self.consumers_working_hours)
+        plotLine2d(
+            consumers_avg_returns_list,
+            y_name="mean cumulative reward",
+            x_name="epoch number",
+            plot_name="Consumers' mean cumulative reward"
+        )
+        plotLine2d(
+            firms_avg_returns_list,
+            y_name="mean cumulative reward",
+            x_name="epoch number",
+            plot_name="Firms' mean cumulative reward"
+        )
+        plotLine2d(
+            avg_prices_list,
+            y_name="mean prices",
+            x_name="epoch number",
+            plot_name="Firms' mean prices"
+        )
+        plotLine2d(
+            avg_wages_list,
+            y_name="mean wages",
+            x_name="epoch number",
+            plot_name="Firms' mean wages"
+        )
+        plotLine2d(
+            avg_wages_list,
+            y_name="mean working hours",
+            x_name="epoch number",
+            plot_name="Consumers' mean working hours"
+        )
 
 
 if __name__ == "__main__":
