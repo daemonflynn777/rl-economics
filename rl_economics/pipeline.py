@@ -409,6 +409,7 @@ class Pipeline:
             self.government_params["reward_scaling_factor"]
         )
         print(epoch_num)
+        c_loss = consumers_mean_loss.item()
         print(f"Consumers' loss: {round(consumers_mean_loss.item(), 5)}, "
               f"firms' loss: {round(firms_mean_loss.item(), 5)}, "
               f"government loss: {round(government_mean_loss.item(), 5)}")
@@ -431,7 +432,7 @@ class Pipeline:
             government_mean_loss.backward()
             self.government_optimizer.step()
         
-        return cosumers_mean_return, firms_mean_return
+        return cosumers_mean_return, firms_mean_return, c_loss
 
     def run(self) -> None:
         print("Init seeds for all random things")
@@ -448,6 +449,7 @@ class Pipeline:
         awg_working_hours_list: list = []
         consumers_avg_returns_list: list = []
         firms_avg_returns_list: list = []
+        consumers_loss_list: list = []
 
         print(f"Start training neural networks, number of epochs: {self.environment_params['epochs']}")
         for i in range(self.environment_params["epochs"]):
@@ -542,7 +544,7 @@ class Pipeline:
             government_log_probs_list = transposeList2d(government_log_probs_list)
 
             # REINFORCE algorithm goes here
-            consumers_avg_returns, firms_avg_returns = self.reinforce(
+            consumers_avg_returns, firms_avg_returns, consumers_loss = self.reinforce(
                 consumers_rewards_list, consumers_log_probs_list,
                 firms_rewards_list, firms_log_probs_list,
                 government_rewards_list, government_log_probs_list,
@@ -551,6 +553,7 @@ class Pipeline:
 
             consumers_avg_returns_list.append(consumers_avg_returns)
             firms_avg_returns_list.append(firms_avg_returns)
+            consumers_loss_list.append(consumers_loss)
 
             # print(consumers_log_probs_list[0][0][0]*consumers_log_probs_list[0][0][1])
             # print(consumers_log_probs_list)
@@ -590,6 +593,12 @@ class Pipeline:
             y_name="mean working hours",
             x_name="epoch number",
             plot_name="Consumers' mean working hours"
+        )
+        plotLine2d(
+            consumers_loss_list,
+            y_name="mean loss",
+            x_name="epoch number",
+            plot_name="Consumers' mean loss"
         )
 
 
